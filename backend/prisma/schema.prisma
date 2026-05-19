@@ -1,0 +1,218 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model StudentStatus {
+  id       Int       @id @default(autoincrement())
+  name     String    @unique @db.VarChar(50)
+  students Student[]
+
+  @@map("student_statuses")
+}
+
+model Student {
+  id               Int      @id @default(autoincrement())
+  lastName         String   @map("last_name") @db.VarChar(100)
+  firstName        String   @map("first_name") @db.VarChar(100)
+  middleName       String?  @map("middle_name") @db.VarChar(100)
+  email            String   @unique @db.VarChar(255)
+  passwordHash     String   @map("password_hash")
+  registrationDate DateTime @default(now()) @map("registration_date")
+  studentStatusId  Int      @map("student_status_id")
+
+  studentStatus StudentStatus @relation(fields: [studentStatusId], references: [id])
+
+  customerTasks       Task[]              @relation("CustomerTasks")
+  executorTasks       Task[]              @relation("ExecutorTasks")
+  responses           Response[]
+  comments            Comment[]
+  reviewsGiven        Review[]            @relation("ReviewerStudent")
+  reviewsReceived     Review[]            @relation("ReviewedStudent")
+  studentSkills       StudentSkill[]
+  taskStatusChanges   TaskStatusHistory[]
+  responseStatusChanges ResponseStatusHistory[]
+
+  @@map("students")
+}
+
+model Category {
+  id          Int    @id @default(autoincrement())
+  name        String @unique @db.VarChar(150)
+  description String?
+  tasks       Task[]
+
+  @@map("categories")
+}
+
+model Skill {
+  id          Int            @id @default(autoincrement())
+  name        String         @unique @db.VarChar(150)
+  description String?
+  studentSkills StudentSkill[]
+  taskSkills    TaskSkill[]
+
+  @@map("skills")
+}
+
+model TaskStatus {
+  id              Int                 @id @default(autoincrement())
+  name            String              @unique @db.VarChar(100)
+  tasks           Task[]
+  statusHistory   TaskStatusHistory[]
+
+  @@map("task_statuses")
+}
+
+model ResponseStatus {
+  id              Int                     @id @default(autoincrement())
+  name            String                  @unique @db.VarChar(100)
+  responses       Response[]
+  statusHistory   ResponseStatusHistory[]
+
+  @@map("response_statuses")
+}
+
+model Task {
+  id                Int       @id @default(autoincrement())
+  title             String    @db.VarChar(255)
+  description       String
+  deadline          DateTime
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime? @map("updated_at")
+  deleted           Boolean   @default(false)
+  deletedAt         DateTime? @map("deleted_at")
+  categoryId        Int       @map("category_id")
+  taskStatusId      Int       @map("task_status_id")
+  customerStudentId Int       @map("customer_student_id")
+  executorStudentId Int?      @map("executor_student_id")
+  isPinned          Boolean   @default(false) @map("is_pinned")
+  pinnedAt          DateTime? @map("pinned_at")
+
+  category       Category           @relation(fields: [categoryId], references: [id])
+  taskStatus     TaskStatus         @relation(fields: [taskStatusId], references: [id])
+  customer       Student            @relation("CustomerTasks", fields: [customerStudentId], references: [id])
+  executor       Student?           @relation("ExecutorTasks", fields: [executorStudentId], references: [id])
+  responses      Response[]
+  comments       Comment[]
+  review         Review?
+  taskSkills     TaskSkill[]
+  statusHistory  TaskStatusHistory[]
+
+  @@map("tasks")
+}
+
+model TaskStatusHistory {
+  id                  Int      @id @default(autoincrement())
+  taskId              Int      @map("task_id")
+  statusId            Int      @map("status_id")
+  changedByStudentId  Int      @map("changed_by_student_id")
+  changedAt           DateTime @default(now()) @map("changed_at")
+  commentText         String?  @map("comment_text")
+
+  task      Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  status    TaskStatus @relation(fields: [statusId], references: [id])
+  changedBy Student    @relation(fields: [changedByStudentId], references: [id])
+
+  @@map("task_status_history")
+}
+
+model Response {
+  id                  Int      @id @default(autoincrement())
+  taskId              Int      @map("task_id")
+  responderStudentId  Int      @map("responder_student_id")
+  responseStatusId    Int      @map("response_status_id")
+  commentText         String   @map("comment_text")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  task            Task                    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  responder       Student                 @relation(fields: [responderStudentId], references: [id])
+  responseStatus  ResponseStatus          @relation(fields: [responseStatusId], references: [id])
+  statusHistory   ResponseStatusHistory[]
+
+  @@unique([taskId, responderStudentId])
+  @@map("responses")
+}
+
+model ResponseStatusHistory {
+  id                  Int      @id @default(autoincrement())
+  responseId          Int      @map("response_id")
+  statusId            Int      @map("status_id")
+  changedByStudentId  Int      @map("changed_by_student_id")
+  changedAt           DateTime @default(now()) @map("changed_at")
+  commentText         String?  @map("comment_text")
+
+  response    Response       @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  status      ResponseStatus @relation(fields: [statusId], references: [id])
+  changedBy   Student        @relation(fields: [changedByStudentId], references: [id])
+
+  @@map("response_status_history")
+}
+
+model Comment {
+  id              Int       @id @default(autoincrement())
+  taskId          Int       @map("task_id")
+  authorStudentId Int       @map("author_student_id")
+  parentCommentId Int?      @map("parent_comment_id")
+  commentText     String    @map("comment_text")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime? @map("updated_at")
+  deleted         Boolean   @default(false)
+  deletedAt       DateTime? @map("deleted_at")
+  isPinned        Boolean   @default(false) @map("is_pinned")
+  pinnedAt        DateTime? @map("pinned_at")
+
+  task          Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author        Student   @relation(fields: [authorStudentId], references: [id])
+  parentComment Comment?  @relation("CommentReplies", fields: [parentCommentId], references: [id])
+  replies       Comment[] @relation("CommentReplies")
+
+  @@map("comments")
+}
+
+model Review {
+  id                Int      @id @default(autoincrement())
+  taskId            Int      @unique @map("task_id")
+  reviewerStudentId Int      @map("reviewer_student_id")
+  reviewedStudentId Int      @map("reviewed_student_id")
+  rating            Int
+  reviewText        String?  @map("review_text")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  task     Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  reviewer Student @relation("ReviewerStudent", fields: [reviewerStudentId], references: [id])
+  reviewed Student @relation("ReviewedStudent", fields: [reviewedStudentId], references: [id])
+
+  @@map("reviews")
+}
+
+model StudentSkill {
+  id          Int      @id @default(autoincrement())
+  studentId   Int      @map("student_id")
+  skillId     Int      @map("skill_id")
+  addedAt     DateTime @default(now()) @map("added_at")
+  commentText String?  @map("comment_text")
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  skill   Skill   @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, skillId])
+  @@map("student_skills")
+}
+
+model TaskSkill {
+  id      Int      @id @default(autoincrement())
+  taskId  Int      @map("task_id")
+  skillId Int      @map("skill_id")
+  addedAt DateTime @default(now()) @map("added_at")
+
+  task  Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, skillId])
+  @@map("task_skills")
+}

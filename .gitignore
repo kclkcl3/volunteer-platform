@@ -1,0 +1,92 @@
+# =========================
+# Dependencies
+# =========================
+node_modules/
+
+# =========================
+# Build outputs
+# =========================
+dist/
+build/
+.next/
+out/
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =========================
+# Environment variables
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# Prisma
+# =========================
+prisma/dev.db
+prisma/dev.db-journal
+
+# =========================
+# Coverage / testing
+# =========================
+coverage/
+.nyc_output/
+
+# =========================
+# Cache / temp
+# =========================
+.cache/
+.tmp/
+temp/
+tmp/
+
+# =========================
+# TypeScript
+# =========================
+*.tsbuildinfo
+
+# =========================
+# IDE / OS
+# =========================
+.vscode/
+.idea/
+
+.DS_Store
+Thumbs.db
+
+# =========================
+# Docker
+# =========================
+docker-data/
+*.pid
+
+# =========================
+# Generated / uploads
+# =========================
+uploads/
+generated/
+
+# =========================
+# Swagger / OpenAPI
+# =========================
+swagger.json
+openapi.json
+
+# =========================
+# Backend
+# =========================
+backend/dist/
+
+# =========================
+# Frontend
+# =========================
+frontend/.next/
+frontend/out/

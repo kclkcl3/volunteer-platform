@@ -1,0 +1,71 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: uni_help_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-uni_help}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-uni_help_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-uni_help}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-uni_help}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    image: node:20-alpine
+    container_name: uni_help_backend_dev
+    working_dir: /app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-uni_help}:${POSTGRES_PASSWORD:-uni_help_pass}@postgres:5432/${POSTGRES_DB:-uni_help}
+      JWT_SECRET: ${JWT_SECRET:-super_secret_jwt_key_change_in_prod}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      PORT: 3001
+    volumes:
+      - ./backend:/app
+      - backend_node_modules:/app/node_modules
+    ports:
+      - '3001:3001'
+    command: >
+      sh -c "
+        apk add --no-cache openssl openssl-dev &&
+        npm install &&
+        npx prisma generate &&
+        npx prisma migrate deploy &&
+        npx ts-node -e '' 2>/dev/null || true &&
+        npm run start:dev
+      "
+
+  frontend:
+    image: node:20-alpine
+    container_name: uni_help_frontend_dev
+    working_dir: /app
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    ports:
+      - '3000:3000'
+    command: >
+      sh -c "
+        npm install &&
+        npm run dev
+      "
+
+volumes:
+  postgres_data:
+  backend_node_modules:
+  frontend_node_modules:
