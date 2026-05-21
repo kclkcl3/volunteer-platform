@@ -1,51 +1,48 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: uni_help_db
-    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-uni_help}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-uni_help_pass}
       POSTGRES_DB: ${POSTGRES_DB:-uni_help}
+    ports:
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - '5432:5432'
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-uni_help}']
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-uni_help} -d ${POSTGRES_DB:-uni_help}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-
-
   backend:
-    image: backend-test
-    container_name: uni_help_backend
-    restart: unless-stopped
+    build: ./backend
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://uni_help:uni_help_pass@postgres:5432/uni_help?schema=public}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-change-me-access}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-refresh}
+      JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+    ports:
+      - "3001:3001"
     depends_on:
       postgres:
         condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-uni_help}:${POSTGRES_PASSWORD:-uni_help_pass}@postgres:5432/${POSTGRES_DB:-uni_help}
-      JWT_SECRET: ${JWT_SECRET:-super_secret_jwt_key_change_in_prod}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
-      PORT: 3001
-    ports:
-      - '3001:3001'
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/api/docs"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: uni_help_frontend
-    restart: unless-stopped
+    build: ./frontend
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001/api}
+    ports:
+      - "3000:3000"
     depends_on:
       - backend
-    environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
-    ports:
-      - '3000:3000'
 
 volumes:
   postgres_data:

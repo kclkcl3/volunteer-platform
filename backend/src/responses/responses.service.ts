@@ -1,85 +1,71 @@
-import {
-  Injectable,
-  NotFoundException,
-  ForbiddenException,
-  ConflictException,
-  BadRequestException,
-} from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { NotificationType, ResponseStatus, TaskStatus } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { CreateResponseDto } from './dto/response.dto';
 
 @Injectable()
 export class ResponsesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
-  async create(taskId: number, studentId: number, commentText: string) {
-    const task = await this.prisma.task.findUnique({
-      where: { id: taskId, deleted: false },
-      include: { taskStatus: true },
-    });
-    if (!task) throw new NotFoundException('Задача не найдена');
-    if (task.taskStatus.name !== 'published') {
-      throw new BadRequestException('Откликаться можно только на опубликованные задачи');
-    }
-    if (task.customerStudentId === studentId) {
-      throw new ForbiddenException('Нельзя откликнуться на собственную задачу');
-    }
-
-    const existing = await this.prisma.response.findUnique({
-      where: { taskId_responderStudentId: { taskId, responderStudentId: studentId } },
-    });
-    if (existing) throw new ConflictException('Вы уже откликнулись на эту задачу');
-
-    const pendingStatus = await this.prisma.responseStatus.findUnique({ where: { name: 'pending' } });
-
-    return this.prisma.response.create({
+  async create(taskId: string, responderId: string, dto: CreateResponseDto) {
+    const task = await this.prisma.task.findFirst({ where: { id: taskId, deletedAt: null } });
+    if (!task) throw new NotFoundException('Task not found');
+    if (task.customerId === responderId) throw new BadRequestException('Student cannot respond to own task');
+    if (task.status !== TaskStatus.published) throw new BadRequestException('Responses are allowed only for published tasks');
+    const response = await this.prisma.response.create({
       data: {
         taskId,
-        responderStudentId: studentId,
-        responseStatusId: pendingStatus!.id,
-        commentText,
+        responderId,
+        message: dto.message,
+        statusHistory: { create: { toStatus: ResponseStatus.pending, changedById: responderId } },
       },
-      include: {
-        responder: { select: { id: true, firstName: true, lastName: true, email: true } },
-        responseStatus: true,
-      },
+      include: { responder: { select: { id: true, firstName: true, lastName: true, rating: true, completedTasksCount: true } } },
     });
+    await this.notifications.create({
+      userId: task.customerId,
+      taskId,
+      type: NotificationType.new_response,
+      title: 'New response',
+      body: `A student responded to "${task.title}"`,
+    });
+    return response;
   }
 
-  async findByTask(taskId: number, requestingStudentId: number) {
-    const task = await this.prisma.task.findUnique({
-      where: { id: taskId, deleted: false },
-      include: { taskStatus: true },
-    });
-    if (!task) throw new NotFoundException('Задача не найдена');
-    if (task.customerStudentId !== requestingStudentId) {
-      throw new ForbiddenException('Только заказчик может просматривать отклики');
-    }
-
+  async byTask(taskId: string, userId: string) {
+    const task = await this.prisma.task.findFirst({ where: { id: taskId, deletedAt: null } });
+    if (!task) throw new NotFoundException('Task not found');
+    if (task.customerId !== userId && task.executorId !== userId) throw new ForbiddenException('Only task participants can see responses');
     return this.prisma.response.findMany({
       where: { taskId },
-      include: {
-        responder: {
-          select: { id: true, firstName: true, lastName: true, email: true, studentSkills: { include: { skill: true } } },
-        },
-        responseStatus: true,
-      },
-      orderBy: { createdAt: 'asc' },
+      include: { responder: { select: { id: true, firstName: true, lastName: true, rating: true, completedTasksCount: true } } },
+      orderBy: { createdAt: 'desc' },
     });
   }
 
-  async delete(responseId: number, studentId: number) {
-    const response = await this.prisma.response.findUnique({
-      where: { id: responseId },
-      include: { task: { include: { taskStatus: true } } },
+  myResponses(userId: string) {
+    return this.prisma.response.findMany({
+      where: { responderId: userId },
+      include: { task: { include: { category: true, skills: { include: { skill: true } } } } },
+      orderBy: { createdAt: 'desc' },
     });
-    if (!response) throw new NotFoundException('Отклик не найден');
-    if (response.responderStudentId !== studentId) {
-      throw new ForbiddenException('Это не ваш отклик');
-    }
-    if (!['draft', 'published'].includes(response.task.taskStatus.name)) {
-      throw new ForbiddenException('Нельзя отозвать отклик после выбора исполнителя');
-    }
+  }
 
-    return this.prisma.response.delete({ where: { id: responseId } });
+  async withdraw(id: string, userId: string) {
+    const response = await this.prisma.response.findUnique({ where: { id } });
+    if (!response) throw new NotFoundException('Response not found');
+    if (response.responderId !== userId) throw new ForbiddenException('Response belongs only to its author');
+    if (response.status !== ResponseStatus.pending) throw new BadRequestException('Only pending response can be withdrawn');
+    return this.prisma.response.update({
+      where: { id },
+      data: {
+        status: ResponseStatus.withdrawn,
+        withdrawnAt: new Date(),
+        statusHistory: { create: { fromStatus: response.status, toStatus: ResponseStatus.withdrawn, changedById: userId } },
+      },
+    });
   }
 }

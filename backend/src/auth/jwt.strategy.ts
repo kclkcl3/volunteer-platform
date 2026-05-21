@@ -1,34 +1,31 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PrismaService } from '../prisma/prisma.service';
 
-export interface JwtPayload {
-  sub: number;
-  email: string;
-}
+type JwtPayload = { sub: string; email: string };
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(private prisma: PrismaService) {
+  constructor(
+    config: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: process.env.JWT_SECRET || 'super_secret_jwt_key',
+      secretOrKey: config.getOrThrow<string>('JWT_ACCESS_SECRET'),
     });
   }
 
   async validate(payload: JwtPayload) {
-    const student = await this.prisma.student.findUnique({
-      where: { id: payload.sub },
-      include: { studentStatus: true },
+    const user = await this.prisma.user.findFirst({
+      where: { id: payload.sub, deletedAt: null },
+      select: { id: true, email: true, role: true, isBlocked: true },
     });
-
-    if (!student) throw new UnauthorizedException();
-    if (student.studentStatus.name === 'blocked') {
-      throw new UnauthorizedException('Account is blocked');
-    }
-
-    return student;
+    if (!user || user.isBlocked) throw new UnauthorizedException('User is blocked or inactive');
+    await this.prisma.user.update({ where: { id: user.id }, data: { lastSeenAt: new Date() } });
+    return { id: user.id, email: user.email, role: user.role };
   }
 }

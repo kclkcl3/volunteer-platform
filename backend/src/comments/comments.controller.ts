@@ -1,50 +1,57 @@
-import { Controller, Post, Get, Delete, Param, ParseIntPipe, Body, UseGuards, Request } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { IsString, IsOptional, IsInt, MinLength } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { CommentsService } from './comments.service';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-
-class CreateCommentDto {
-  @ApiProperty()
-  @IsString()
-  @MinLength(1)
-  commentText: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsInt()
-  parentCommentId?: number;
-}
+import { AuthUser, CurrentUser } from '../common/decorators/current-user.decorator';
+import { Roles } from '../common/decorators/roles.decorator';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { CommentsService } from './comments.service';
+import { CreateCommentDto, PinCommentDto, UpdateCommentDto } from './dto/comment.dto';
 
 @ApiTags('comments')
 @Controller()
 export class CommentsController {
-  constructor(private commentsService: CommentsService) {}
+  constructor(private readonly comments: CommentsService) {}
+
+  @Get('tasks/:taskId/comments')
+  list(@Param('taskId') taskId: string) {
+    return this.comments.list(taskId);
+  }
 
   @Post('tasks/:taskId/comments')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Post a comment on a task' })
-  create(
-    @Param('taskId', ParseIntPipe) taskId: number,
-    @Request() req,
-    @Body() dto: CreateCommentDto,
-  ) {
-    return this.commentsService.create(taskId, req.user.id, dto.commentText, dto.parentCommentId);
+  create(@Param('taskId') taskId: string, @CurrentUser() user: AuthUser, @Body() dto: CreateCommentDto) {
+    return this.comments.create(taskId, user.id, dto);
   }
 
-  @Get('tasks/:taskId/comments')
-  @ApiOperation({ summary: 'Get comments for a task' })
-  findByTask(@Param('taskId', ParseIntPipe) taskId: number) {
-    return this.commentsService.findByTask(taskId);
+  @Patch('comments/:id')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  update(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: UpdateCommentDto) {
+    return this.comments.update(id, user.id, dto);
   }
 
   @Delete('comments/:id')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Delete own comment (or admin deletes any)' })
-  delete(@Param('id', ParseIntPipe) id: number, @Request() req) {
-    return this.commentsService.delete(id, req.user.id);
+  softDelete(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.comments.softDelete(id, user.id, user.role);
+  }
+
+  @Delete('comments/:id/force')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.admin)
+  @ApiBearerAuth()
+  forceDelete(@Param('id') id: string) {
+    return this.comments.forceDelete(id);
+  }
+
+  @Patch('comments/:id/pin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.admin)
+  @ApiBearerAuth()
+  pin(@Param('id') id: string, @Body() dto: PinCommentDto) {
+    return this.comments.pin(id, dto.isPinned);
   }
 }

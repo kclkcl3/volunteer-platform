@@ -1,98 +1,124 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { TaskStatus } from '@prisma/client';
+import { Type } from 'class-transformer';
 import {
-  IsString,
-  IsInt,
-  IsDateString,
-  IsOptional,
+  ArrayMaxSize,
   IsArray,
   IsBoolean,
+  IsDateString,
+  IsEnum,
+  IsIn,
+  IsOptional,
+  IsString,
+  MaxLength,
   MinLength,
 } from 'class-validator';
+import { PaginationDto } from '../../common/pagination/pagination.dto';
 
 export class CreateTaskDto {
-  @ApiProperty({ example: 'Помогите с SQL запросом' })
   @IsString()
-  @MinLength(3)
+  @MinLength(5)
+  @MaxLength(160)
   title: string;
 
-  @ApiProperty({ example: 'Нужна помощь с написанием сложного JOIN запроса...' })
   @IsString()
-  @MinLength(10)
+  @MinLength(20)
   description: string;
 
-  @ApiProperty({ example: '2025-06-01T00:00:00.000Z' })
+  @IsString()
+  categoryId: string;
+
+  @IsArray()
+  @ArrayMaxSize(12)
+  @IsString({ each: true })
+  skillIds: string[] = [];
+
   @IsDateString()
   deadline: string;
 
-  @ApiProperty({ example: 1 })
-  @IsInt()
-  categoryId: number;
-
-  @ApiPropertyOptional({ example: [1, 2] })
-  @IsOptional()
-  @IsArray()
-  @IsInt({ each: true })
-  skillIds?: number[];
-
-  @ApiPropertyOptional({ example: false })
   @IsOptional()
   @IsBoolean()
   publishImmediately?: boolean;
 }
 
 export class UpdateTaskDto {
-  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MinLength(5)
+  @MaxLength(160)
   title?: string;
 
-  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MinLength(20)
   description?: string;
 
-  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  categoryId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(12)
+  @IsString({ each: true })
+  skillIds?: string[];
+
   @IsOptional()
   @IsDateString()
   deadline?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsInt()
-  categoryId?: number;
-
-  @ApiPropertyOptional({ example: [1, 2] })
-  @IsOptional()
-  @IsArray()
-  @IsInt({ each: true })
-  skillIds?: number[];
 }
 
-export class TaskQueryDto {
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsInt()
-  categoryId?: number;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsInt()
-  skillId?: number;
-
+export class TaskQueryDto extends PaginationDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   search?: string;
 
-  @ApiPropertyOptional({ default: 1 })
+  @ApiPropertyOptional()
   @IsOptional()
-  page?: number;
+  @IsString()
+  categoryId?: string;
 
-  @ApiPropertyOptional({ default: 10 })
+  @ApiPropertyOptional({ type: [String] })
   @IsOptional()
-  limit?: number;
+  @IsArray()
+  @IsString({ each: true })
+  @Type(() => String)
+  skillIds?: string[];
 
-  @ApiPropertyOptional({ description: 'Дедлайн в течение 24 часов' })
+  @ApiPropertyOptional({ enum: TaskStatus })
   @IsOptional()
-  deadlineSoon?: string;
+  @IsEnum(TaskStatus)
+  status?: TaskStatus;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  deadlineSoon?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  activeOnly?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  myTasks?: boolean;
+
+  @ApiPropertyOptional({ enum: ['createdAt', 'deadline', 'status'] })
+  @IsOptional()
+  @IsIn(['createdAt', 'deadline', 'status'])
+  sortBy: 'createdAt' | 'deadline' | 'status' = 'createdAt';
+}
+
+export class SelectExecutorDto {
+  @IsString()
+  responseId: string;
+}
+
+export class WorkflowReasonDto {
+  @IsOptional()
+  @IsString()
+  reason?: string;
 }

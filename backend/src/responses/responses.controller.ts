@@ -1,47 +1,34 @@
-import { Controller, Post, Get, Delete, Param, ParseIntPipe, Body, UseGuards, Request } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { IsString, MinLength } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
-import { ResponsesService } from './responses.service';
+import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-
-class CreateResponseDto {
-  @ApiProperty({ example: 'Я умею работать с SQL, помогу!' })
-  @IsString()
-  @MinLength(5)
-  commentText: string;
-}
+import { AuthUser, CurrentUser } from '../common/decorators/current-user.decorator';
+import { CreateResponseDto } from './dto/response.dto';
+import { ResponsesService } from './responses.service';
 
 @ApiTags('responses')
 @Controller()
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
 export class ResponsesController {
-  constructor(private responsesService: ResponsesService) {}
+  constructor(private readonly responses: ResponsesService) {}
 
   @Post('tasks/:taskId/responses')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Respond to a published task' })
-  create(
-    @Param('taskId', ParseIntPipe) taskId: number,
-    @Request() req,
-    @Body() dto: CreateResponseDto,
-  ) {
-    return this.responsesService.create(taskId, req.user.id, dto.commentText);
+  create(@Param('taskId') taskId: string, @CurrentUser() user: AuthUser, @Body() dto: CreateResponseDto) {
+    return this.responses.create(taskId, user.id, dto);
   }
 
   @Get('tasks/:taskId/responses')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get all responses for a task (customer only)' })
-  findByTask(@Param('taskId', ParseIntPipe) taskId: number, @Request() req) {
-    return this.responsesService.findByTask(taskId, req.user.id);
+  byTask(@Param('taskId') taskId: string, @CurrentUser() user: AuthUser) {
+    return this.responses.byTask(taskId, user.id);
+  }
+
+  @Get('responses/my')
+  myResponses(@CurrentUser() user: AuthUser) {
+    return this.responses.myResponses(user.id);
   }
 
   @Delete('responses/:id')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Withdraw my response' })
-  delete(@Param('id', ParseIntPipe) id: number, @Request() req) {
-    return this.responsesService.delete(id, req.user.id);
+  withdraw(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.responses.withdraw(id, user.id);
   }
 }

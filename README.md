@@ -1,228 +1,102 @@
-# UniHelp — Платформа студенческой взаимопомощи
+# UniHelp
 
-Веб-приложение для бесплатного обмена помощью внутри университета. Студенты публикуют задачи, откликаются на задачи других и оценивают исполнителей.
+Production-oriented fullstack platform for student mutual help inside a university. Students publish tasks, respond to tasks, select executors, move work through a strict workflow, leave reviews, and receive skill-based recommendations.
 
----
+## Stack
 
-## Стек технологий
+- Frontend: Next.js 15 App Router, React, TypeScript, TailwindCSS, React Hook Form, Zod, TanStack Query, Axios, lucide-react
+- Backend: NestJS, Prisma ORM, PostgreSQL, JWT, Swagger, class-validator, bcrypt
+- Infrastructure: Docker, Docker Compose, optional pgAdmin via `docker-compose.dev.yml`
+- Testing: Jest unit tests for workflow rules, e2e config scaffold
 
-| Слой | Технология |
-|------|-----------|
-| Backend | NestJS + TypeScript |
-| ORM | Prisma 5 |
-| База данных | PostgreSQL 16 |
-| Аутентификация | JWT (passport-jwt) |
-| API документация | Swagger / OpenAPI |
-| Frontend | Next.js 14 (App Router) |
-| UI | Tailwind CSS |
-| Состояние | TanStack Query v5 |
-| Формы | react-hook-form + zod |
-| Контейнеризация | Docker + Docker Compose |
+## Architecture
 
----
-
-## Быстрый старт
-
-### Требования
-- Docker и Docker Compose
-- (опционально) Node.js 20+ для локальной разработки
-
-### Запуск через Docker
-
-```bash
-# 1. Клонировать репозиторий
-git clone <repo_url>
-cd project
-
-# 2. Создать .env файл
-cp .env.example .env
-# При необходимости отредактировать .env
-
-# 3. Запустить все сервисы
-docker compose up -d
-
-# 4. Применить миграции и сид данные
-docker compose exec backend npx prisma migrate deploy
-docker compose exec backend npx ts-node prisma/seed.ts
+```txt
+backend/src
+  auth/              JWT auth, refresh, password hashing
+  users/             profile, skills, public helpers
+  tasks/             task CRUD, filters, strict workflow
+  responses/         task responses and withdrawal
+  comments/          nested comments, soft delete, pinning
+  reviews/           one review per completed task, rating recalculation
+  skills/            skill catalog
+  categories/        category catalog
+  notifications/     domain notifications and matching-skill alerts
+  analytics/         dashboard statistics
+  admin/             moderation, blocking, forced status changes
+  common/            guards, decorators, filters, pagination
 ```
 
-После запуска:
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:3001/api
-- Swagger UI: http://localhost:3001/api/docs
+```txt
+frontend/src
+  app/               App Router pages and protected layout
+  components/ui/     reusable UI primitives
+  features/tasks/    task cards and task-specific UI
+  features/layout/   authenticated app shell
+  lib/api.ts         typed Axios API client
+```
 
-### Локальная разработка (без Docker)
+## Core Workflow
 
-**Backend:**
+`draft -> published -> executor_selected -> in_progress -> on_review -> completed`
+
+Rules are enforced in `backend/src/tasks/workflow.ts` and in transactional services:
+
+- no status jumps;
+- draft tasks are visible only to owner or admin;
+- students cannot respond to their own task;
+- executor selection accepts one response and rejects others in one transaction;
+- only executor can send work to review;
+- only customer can approve work or request rework;
+- review is allowed only after completion and only once per task;
+- helper rating is recalculated from `AVG(review.rating)`;
+- completed counter counts only completed, non-deleted executor tasks.
+
+## Run Locally
+
 ```bash
+cp .env.example .env
+docker compose up -d postgres
+
 cd backend
 npm install
 npx prisma generate
 npx prisma migrate dev
-npx ts-node prisma/seed.ts     # заполнить справочники
+npm run prisma:seed
 npm run start:dev
-```
 
-**Frontend:**
-```bash
-cd frontend
+cd ../frontend
 npm install
 npm run dev
 ```
 
----
+URLs:
 
-## Структура проекта
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:3001/api
+- Swagger: http://localhost:3001/api/docs
 
-```
-project/
-├── docker-compose.yml
-├── .env.example
-│
-├── backend/
-│   ├── prisma/
-│   │   ├── schema.prisma        # Схема БД
-│   │   └── seed.ts              # Начальные данные
-│   └── src/
-│       ├── main.ts
-│       ├── app.module.ts
-│       ├── prisma/              # PrismaService (global)
-│       ├── auth/                # Регистрация, логин, JWT
-│       ├── students/            # Профили, навыки
-│       ├── tasks/               # CRUD задач, workflow статусов
-│       ├── responses/           # Отклики на задачи
-│       ├── comments/            # Комментарии к задачам
-│       ├── reviews/             # Отзывы по завершённым задачам
-│       ├── skills/              # Справочник навыков
-│       └── categories/          # Справочник категорий
-│
-└── frontend/
-    └── src/
-        ├── app/
-        │   ├── page.tsx             # Главная страница
-        │   ├── login/page.tsx       # Вход
-        │   ├── register/page.tsx    # Регистрация
-        │   ├── tasks/
-        │   │   ├── page.tsx         # Список задач с фильтрами
-        │   │   ├── new/page.tsx     # Создание задачи
-        │   │   └── [id]/page.tsx    # Страница задачи
-        │   ├── my-tasks/page.tsx    # Мои задачи
-        │   ├── profile/page.tsx     # Мой профиль
-        │   └── students/[id]/       # Публичный профиль студента
-        ├── components/
-        │   ├── Navbar.tsx
-        │   └── TaskCard.tsx
-        ├── contexts/
-        │   └── AuthContext.tsx
-        └── lib/
-            └── api.ts               # Axios клиент + все API методы
+Seed accounts:
+
+- `admin@university.ru` / `admin12345`
+- `anna@university.ru` / `student12345`
+- `pavel@university.ru` / `student12345`
+
+## Verification
+
+```bash
+cd backend
+npm run build
+npm test -- --runInBand
+
+cd ../frontend
+npm run build
 ```
 
----
+## Implemented Requirements
 
-## Бизнес-логика
-
-### Жизненный цикл задачи
-
-```
-draft → published → executor_selected → in_progress → on_review → completed
-```
-
-| Статус | Кто переводит | Что происходит |
-|--------|--------------|----------------|
-| `draft` | Автоматически при создании | Задача видна только заказчику |
-| `published` | Заказчик | Задача видна всем, можно откликаться |
-| `executor_selected` | Заказчик (через выбор из откликов) | Все остальные отклики отклоняются |
-| `in_progress` | Заказчик | Исполнитель работает |
-| `on_review` | Заказчик | Проверка результата |
-| `completed` | Заказчик | Задача завершена, можно оставить отзыв |
-
-### Правила откликов
-- Нельзя откликнуться на собственную задачу
-- Только одна активная задача → отклик уникален (taskId + responderId)
-- После выбора исполнителя остальные отклики автоматически отклоняются
-
-### Отзывы
-- Только заказчик оставляет отзыв исполнителю
-- Только по завершённым задачам
-- Один отзыв на задачу
-- Рейтинг 1–5 звёзд + текстовый комментарий
-
----
-
-## API эндпоинты
-
-### Auth
-```
-POST /api/auth/register    — регистрация
-POST /api/auth/login       — вход, возвращает JWT
-```
-
-### Students
-```
-GET  /api/students/me                — мой профиль (auth)
-GET  /api/students/top               — топ по рейтингу
-GET  /api/students/:id               — публичный профиль
-POST /api/students/me/skills/:skillId — добавить навык (auth)
-DELETE /api/students/me/skills/:skillId — удалить навык (auth)
-GET  /api/students/:id/reviews       — отзывы о студенте
-```
-
-### Tasks
-```
-GET  /api/tasks                      — список с фильтрами (?search, ?categoryId, ?skillId, ?page, ?limit)
-GET  /api/tasks/my                   — мои задачи (auth)
-GET  /api/tasks/recommended          — рекомендованные по навыкам (auth)
-GET  /api/tasks/:id                  — задача по ID
-POST /api/tasks                      — создать задачу (auth)
-PATCH /api/tasks/:id                 — обновить черновик (auth)
-DELETE /api/tasks/:id                — мягкое удаление (auth)
-POST /api/tasks/:id/advance-status   — следующий статус (auth)
-POST /api/tasks/:id/select-executor/:executorId — выбрать исполнителя (auth)
-```
-
-### Responses
-```
-POST   /api/tasks/:taskId/responses  — откликнуться (auth)
-GET    /api/tasks/:taskId/responses  — отклики по задаче (только заказчик)
-DELETE /api/responses/:id            — отозвать отклик (auth)
-```
-
-### Comments
-```
-POST   /api/tasks/:taskId/comments   — добавить комментарий (auth)
-GET    /api/tasks/:taskId/comments   — комментарии задачи
-DELETE /api/comments/:id             — удалить комментарий (auth)
-```
-
-### Reviews
-```
-POST /api/tasks/:taskId/review       — оставить отзыв (auth, заказчик)
-```
-
-### Справочники
-```
-GET /api/categories    — все категории
-GET /api/skills        — все навыки
-```
-
----
-
-## Переменные окружения
-
-| Переменная | Описание | По умолчанию |
-|-----------|----------|-------------|
-| `POSTGRES_USER` | Пользователь БД | `uni_help` |
-| `POSTGRES_PASSWORD` | Пароль БД | `uni_help_pass` |
-| `POSTGRES_DB` | Имя БД | `uni_help` |
-| `JWT_SECRET` | Секрет для JWT | ⚠️ Поменяйте! |
-| `JWT_EXPIRES_IN` | Срок жизни токена | `7d` |
-| `NEXT_PUBLIC_API_URL` | URL backend для frontend | `http://localhost:3001` |
-
----
-
-## Демо-аккаунт
-
-После `prisma/seed.ts`:
-- Email: `admin@university.ru`
-- Пароль: `admin123`
+- Prisma schema with enums, relations, indexes, soft delete, audit timestamps, history tables, notifications, achievements, complaints.
+- REST API with Swagger, validation DTOs, RBAC guard, centralized error filter, rate limiting, Helmet and CORS.
+- Task filters: category, skills, status, search, active only, my tasks, deadline within next 24h, pagination and sorting.
+- Frontend pages: landing, login, register, dashboard, task feed, task details, create task, edit placeholder, my tasks, completed tasks, my responses, profile, settings, notifications, admin dashboard.
+- Dockerfiles for frontend/backend and compose files for production-style and dev database setup.

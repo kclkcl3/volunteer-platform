@@ -1,115 +1,104 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Patch,
-  Delete,
-  Body,
-  Param,
-  ParseIntPipe,
-  UseGuards,
-  Request,
-  Query,
-  Optional,
-} from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
-import { TasksService } from './tasks.service';
-import { CreateTaskDto, UpdateTaskDto, TaskQueryDto } from './dto/task.dto';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { TaskStatus } from '@prisma/client';
+import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
+import { AuthUser, CurrentUser } from '../common/decorators/current-user.decorator';
+import { CreateTaskDto, SelectExecutorDto, TaskQueryDto, UpdateTaskDto, WorkflowReasonDto } from './dto/task.dto';
+import { TasksService } from './tasks.service';
 
 @ApiTags('tasks')
 @Controller('tasks')
 export class TasksController {
-  constructor(private tasksService: TasksService) {}
+  constructor(private readonly tasks: TasksService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List published tasks (paginated)' })
-  findAll(@Query() query: TaskQueryDto, @Request() req) {
-    const studentId = req.user?.id;
-    return this.tasksService.findAll(query, studentId);
+  @UseGuards(OptionalJwtAuthGuard)
+  findAll(@Query() query: TaskQueryDto, @Req() request: Request & { user?: AuthUser }) {
+    return this.tasks.findAll(query, request.user?.id, request.user?.role);
   }
 
   @Get('my')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get my tasks (as customer or executor)' })
-  getMyTasks(@Request() req) {
-    return this.tasksService.getMyTasks(req.user.id);
+  myTasks(@CurrentUser() user: AuthUser, @Query('status') status?: TaskStatus) {
+    return this.tasks.myTasks(user.id, status);
   }
 
   @Get('recommended')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get tasks recommended for me based on my skills' })
-  getRecommended(@Request() req) {
-    return this.tasksService.getRecommendedForStudent(req.user.id);
+  recommended(@CurrentUser() user: AuthUser) {
+    return this.tasks.recommended(user.id);
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get task by ID' })
-  findOne(@Param('id', ParseIntPipe) id: number, @Request() req) {
-    return this.tasksService.findOne(id, req.user?.id);
+  @UseGuards(OptionalJwtAuthGuard)
+  findOne(@Param('id') id: string, @Req() request: Request & { user?: AuthUser }) {
+    return this.tasks.findOne(id, request.user?.id, request.user?.role);
   }
 
   @Post()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Create a new task' })
-  create(@Request() req, @Body() dto: CreateTaskDto) {
-    return this.tasksService.create(req.user.id, dto);
+  create(@CurrentUser() user: AuthUser, @Body() dto: CreateTaskDto) {
+    return this.tasks.create(user.id, dto);
   }
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Update task (draft only)' })
-  update(
-    @Param('id', ParseIntPipe) id: number,
-    @Request() req,
-    @Body() dto: UpdateTaskDto,
-  ) {
-    return this.tasksService.update(id, req.user.id, dto);
+  update(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: UpdateTaskDto) {
+    return this.tasks.update(id, user.id, dto);
   }
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Soft-delete task (draft/published only)' })
-  delete(@Param('id', ParseIntPipe) id: number, @Request() req) {
-    return this.tasksService.delete(id, req.user.id);
+  remove(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.tasks.remove(id, user.id, user.role);
   }
 
-  @Post(':id/reject-work')
+  @Post(':id/publish')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Reject work and send back to in_progress (customer only)' })
-  rejectWork(@Param('id', ParseIntPipe) id: number, @Request() req) {
-    return this.tasksService.rejectWork(id, req.user.id);
+  publish(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.tasks.publish(id, user.id);
   }
 
-  @Get('completed/student/:studentId')
-  @ApiOperation({ summary: 'Get completed tasks for a student' })
-  getCompletedByStudent(@Param('studentId', ParseIntPipe) studentId: number) {
-    return this.tasksService.getCompletedByStudent(studentId);
-  }
-
-  @Post(':id/advance-status')
+  @Post(':id/select-executor')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Advance task to next status in workflow' })
-  advanceStatus(@Param('id', ParseIntPipe) id: number, @Request() req) {
-    return this.tasksService.advanceStatus(id, req.user.id);
+  selectExecutor(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: SelectExecutorDto) {
+    return this.tasks.selectExecutor(id, user.id, dto.responseId);
   }
 
-  @Post(':id/select-executor/:executorId')
+  @Post(':id/start')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Select executor from respondents' })
-  selectExecutor(
-    @Param('id', ParseIntPipe) id: number,
-    @Param('executorId', ParseIntPipe) executorId: number,
-    @Request() req,
-  ) {
-    return this.tasksService.selectExecutor(id, req.user.id, executorId);
+  start(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.tasks.start(id, user.id);
+  }
+
+  @Post(':id/send-to-review')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  sendToReview(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.tasks.sendToReview(id, user.id);
+  }
+
+  @Post(':id/approve')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  approve(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.tasks.approve(id, user.id);
+  }
+
+  @Post(':id/request-rework')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  requestRework(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: WorkflowReasonDto) {
+    return this.tasks.requestRework(id, user.id, dto.reason);
   }
 }

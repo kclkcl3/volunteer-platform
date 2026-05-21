@@ -1,78 +1,68 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { NotificationType, UserRole } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
-
-const authorSelect = { id: true, firstName: true, lastName: true };
+import { CreateCommentDto, UpdateCommentDto } from './dto/comment.dto';
 
 @Injectable()
 export class CommentsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
-  async create(taskId: number, studentId: number, commentText: string, parentCommentId?: number) {
-    const task = await this.prisma.task.findUnique({
-      where: { id: taskId, deleted: false },
-      include: { taskStatus: true },
+  async create(taskId: string, authorId: string, dto: CreateCommentDto) {
+    const task = await this.prisma.task.findFirst({ where: { id: taskId, deletedAt: null } });
+    if (!task) throw new NotFoundException('Task not found');
+    const comment = await this.prisma.comment.create({
+      data: { taskId, authorId, parentId: dto.parentId, body: dto.body },
+      include: { author: { select: { id: true, firstName: true, lastName: true } }, replies: true },
     });
-    if (!task) throw new NotFoundException('Задача не найдена');
-
-    const isParticipant =
-      task.customerStudentId === studentId || task.executorStudentId === studentId;
-    if (task.taskStatus.name === 'draft' && !isParticipant) {
-      throw new ForbiddenException('Нельзя комментировать черновики');
+    if (dto.parentId) {
+      const parent = await this.prisma.comment.findUnique({ where: { id: dto.parentId } });
+      if (parent && parent.authorId !== authorId) {
+        await this.notifications.create({
+          userId: parent.authorId,
+          taskId,
+          type: NotificationType.comment_reply,
+          title: 'New reply',
+          body: 'Someone replied to your comment',
+        });
+      }
     }
-
-    if (parentCommentId) {
-      const parent = await this.prisma.comment.findUnique({ where: { id: parentCommentId } });
-      if (!parent || parent.taskId !== taskId)
-        throw new NotFoundException('Родительский комментарий не найден');
-    }
-
-    return this.prisma.comment.create({
-      data: {
-        taskId,
-        authorStudentId: studentId,
-        commentText,
-        parentCommentId: parentCommentId || null,
-      },
-      include: {
-        author: { select: authorSelect },
-        replies: {
-          where: { deleted: false },
-          include: { author: { select: authorSelect } },
-          orderBy: { createdAt: 'asc' },
-        },
-      },
-    });
+    return comment;
   }
 
-  async findByTask(taskId: number) {
-    const task = await this.prisma.task.findUnique({ where: { id: taskId, deleted: false } });
-    if (!task) throw new NotFoundException('Задача не найдена');
-
+  list(taskId: string) {
     return this.prisma.comment.findMany({
-      where: { taskId, deleted: false, parentCommentId: null },
+      where: { taskId, parentId: null },
       include: {
-        author: { select: authorSelect },
-        replies: {
-          where: { deleted: false },
-          include: { author: { select: authorSelect } },
-          orderBy: { createdAt: 'asc' },
-        },
+        author: { select: { id: true, firstName: true, lastName: true } },
+        replies: { include: { author: { select: { id: true, firstName: true, lastName: true } } }, orderBy: { createdAt: 'asc' } },
       },
       orderBy: [{ isPinned: 'desc' }, { createdAt: 'asc' }],
     });
   }
 
-  async delete(commentId: number, studentId: number) {
-    const comment = await this.prisma.comment.findUnique({ where: { id: commentId } });
-    if (!comment || comment.deleted) throw new NotFoundException('Комментарий не найден');
+  async update(id: string, userId: string, dto: UpdateCommentDto) {
+    const comment = await this.prisma.comment.findUnique({ where: { id } });
+    if (!comment) throw new NotFoundException('Comment not found');
+    if (comment.authorId !== userId) throw new ForbiddenException('Only author can edit comment');
+    return this.prisma.comment.update({ where: { id }, data: { body: dto.body, editedAt: new Date() } });
+  }
 
-    if (comment.authorStudentId !== studentId) {
-      throw new ForbiddenException('Это не ваш комментарий');
-    }
+  async softDelete(id: string, userId: string, role: UserRole) {
+    const comment = await this.prisma.comment.findUnique({ where: { id } });
+    if (!comment) throw new NotFoundException('Comment not found');
+    if (role !== UserRole.admin && comment.authorId !== userId) throw new ForbiddenException('Only author or admin can delete comment');
+    return this.prisma.comment.update({ where: { id }, data: { deletedAt: new Date(), body: '[deleted]' } });
+  }
 
-    return this.prisma.comment.update({
-      where: { id: commentId },
-      data: { deleted: true, deletedAt: new Date() },
-    });
+  forceDelete(id: string) {
+    return this.prisma.comment.delete({ where: { id } });
+  }
+
+  pin(id: string, isPinned: boolean) {
+    return this.prisma.comment.update({ where: { id }, data: { isPinned } });
   }
 }

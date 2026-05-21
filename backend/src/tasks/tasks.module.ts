@@ -1,9 +1,12 @@
 import { Module } from '@nestjs/common';
-import { TasksService } from './tasks.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { TasksController } from './tasks.controller';
+import { TasksService } from './tasks.service';
 
 @Module({
-  providers: [TasksService],
+  imports: [NotificationsModule],
   controllers: [TasksController],
+  providers: [TasksService],
+  exports: [TasksService],
 })
 export class TasksModule {}
