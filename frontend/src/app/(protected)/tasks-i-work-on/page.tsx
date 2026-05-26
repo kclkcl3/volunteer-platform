@@ -7,12 +7,12 @@ import { tasksApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
-export default function CompletedTasksPage() {
+export default function TasksIWorkOnPage() {
 	const [page, setPage] = useState(1);
 	const limit = 10;
 	const tasks = useQuery({
-		queryKey: ['completed-tasks', page],
-		queryFn: () => tasksApi.my('completed'),
+		queryKey: ['tasks-i-work-on', page],
+		queryFn: () => tasksApi.my('work'),
 	});
 	const totalPages = tasks.data?.data.length
 		? Math.ceil(tasks.data.data.length / limit)
@@ -24,7 +24,7 @@ export default function CompletedTasksPage() {
 
 	return (
 		<div className='space-y-6'>
-			<h1 className='text-3xl font-semibold'>Завершенные задачи</h1>
+			<h1 className='text-3xl font-semibold'>Задачи, над которыми я работаю</h1>
 			<div className='grid gap-4'>
 				{tasks.isLoading &&
 					[1, 2, 3].map((i) => (
@@ -32,7 +32,7 @@ export default function CompletedTasksPage() {
 					))}
 				{!tasks.isLoading && paginatedTasks?.length === 0 && (
 					<div className='text-center py-12 text-slate-500 dark:text-slate-400'>
-						<p className='text-lg'>У вас пока нет завершенных задач</p>
+						<p className='text-lg'>У вас пока нет задач в работе</p>
 					</div>
 				)}
 				{paginatedTasks?.map((task) => (

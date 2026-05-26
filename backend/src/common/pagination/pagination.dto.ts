@@ -1,27 +1,31 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsInt, IsIn, Min, Max } from 'class-validator';
 
 export class PaginationDto {
-  @ApiPropertyOptional({ default: 1 })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  page = 1;
+	@ApiPropertyOptional({ default: 1 })
+	@IsInt()
+	@Min(1)
+	@Type(() => Number)
+	page: number = 1;
 
-  @ApiPropertyOptional({ default: 20, maximum: 100 })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit = 20;
+	@ApiPropertyOptional({ default: 20, maximum: 100 })
+	@IsInt()
+	@Min(1)
+	@Max(100)
+	@Type(() => Number)
+	limit: number = 20;
 
-  @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'desc' })
-  @IsOptional()
-  @IsIn(['asc', 'desc'])
-  order: 'asc' | 'desc' = 'desc';
+	@ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'desc' })
+	@IsIn(['asc', 'desc'])
+	order: 'asc' | 'desc' = 'desc';
 }
 
-export const getPagination = (dto: PaginationDto) => ({
-  skip: (dto.page - 1) * dto.limit,
-  take: dto.limit,
-});
+export const getPagination = (dto: PaginationDto) => {
+	const page = Math.max(1, Number(dto.page) || 1);
+	const limit = Math.min(100, Math.max(1, Number(dto.limit) || 10));
+	return {
+		skip: (page - 1) * limit,
+		take: limit,
+	};
+};

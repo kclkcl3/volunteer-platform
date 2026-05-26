@@ -15,7 +15,6 @@ enum UserRole {
 enum TaskStatus {
   draft
   published
-  executor_selected
   in_progress
   on_review
   completed
@@ -30,6 +29,7 @@ enum ResponseStatus {
 
 enum NotificationType {
   new_response
+  response_rejected
   executor_selected
   task_completed
   task_reviewed
@@ -67,6 +67,7 @@ model User {
   studentStatusId     String?
   isBlocked           Boolean    @default(false)
   lastSeenAt          DateTime?
+  refreshToken        String?
   rating              Decimal    @default(0) @db.Decimal(3, 2)
   completedTasksCount Int        @default(0)
   createdAt           DateTime   @default(now())
@@ -117,17 +118,6 @@ model StudentSkill {
   @@map("student_skills")
 }
 
-model Category {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  tasks       Task[]
-
-  @@map("categories")
-}
-
 model Task {
   id          String     @id @default(cuid())
   title       String
@@ -141,11 +131,9 @@ model Task {
 
   customerId String
   executorId String?
-  categoryId String
 
-  customer User     @relation("CustomerTasks", fields: [customerId], references: [id], onDelete: Restrict)
-  executor User?    @relation("ExecutorTasks", fields: [executorId], references: [id], onDelete: SetNull)
-  category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  customer User  @relation("CustomerTasks", fields: [customerId], references: [id], onDelete: Restrict)
+  executor User? @relation("ExecutorTasks", fields: [executorId], references: [id], onDelete: SetNull)
 
   skills        TaskSkill[]
   responses     Response[]
@@ -155,8 +143,7 @@ model Task {
   notifications Notification[]
   complaints    Complaint[]
 
-  @@index([status, deadline])
-  @@index([categoryId, status])
+  @@index([status, deadline, publishedAt])
   @@index([customerId])
   @@index([executorId])
   @@index([deletedAt])
@@ -172,7 +159,7 @@ model TaskSkill {
   skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
 
   @@id([taskId, skillId])
-  @@index([skillId])
+  @@index([skillId, taskId])
   @@map("task_skills")
 }
 

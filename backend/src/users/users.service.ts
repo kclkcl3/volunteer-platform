@@ -57,4 +57,63 @@ export class UsersService {
   removeSkill(userId: string, skillId: string) {
     return this.prisma.studentSkill.delete({ where: { userId_skillId: { userId, skillId } } });
   }
+
+  async getProfileStats(userId: string) {
+    const baseUser = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId, deletedAt: null, isBlocked: false },
+      select: userSelect,
+    });
+
+    const [reviewsGot, executorTasks, customerTasks, responses] = await Promise.all([
+      this.prisma.review.findMany({
+        where: { reviewedId: userId },
+        select: {
+          rating: true,
+          text: true,
+          createdAt: true,
+          task: { select: { title: true } },
+          reviewerId: true,
+        },
+      }),
+      this.prisma.task.findMany({
+        where: { executorId: userId, status: 'completed' },
+        select: { id: true, title: true, deadline: true },
+      }),
+      this.prisma.task.findMany({
+        where: { customerId: userId, status: 'completed' },
+        select: { id: true, title: true },
+      }),
+      this.prisma.response.findMany({
+        where: { responderId: userId },
+        select: { id: true, status: true, task: { select: { title: true, status: true } } },
+      }),
+    ]);
+
+    const avgRating = reviewsGot.length
+      ? reviewsGot.reduce((sum, r) => sum + r.rating, 0) / reviewsGot.length
+      : 0;
+
+    return {
+      ...baseUser,
+      reviewsGot,
+      calculatedRating: Number(avgRating.toFixed(2)),
+      completedAsExecutor: executorTasks.length,
+      completedAsCreator: customerTasks.length,
+      totalResponses: responses.length,
+    };
+  }
+
+  async updateRatingAfterReview(userId: string) {
+    const reviews = await this.prisma.review.findMany({
+      where: { reviewedId: userId },
+      select: { rating: true },
+    });
+    const avgRating = reviews.length ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length : 0;
+    
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { rating: Number(avgRating.toFixed(2)) },
+      select: userSelect,
+    });
+  }
 }
