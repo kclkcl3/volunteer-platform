@@ -33,6 +33,9 @@ export function TasksContent() {
 			? searchParams.get('skillIds')!.split(',')
 			: [],
 	);
+	const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
+		searchParams.get('categoryId'),
+	);
 	const [sortBy, setSortBy] = useState(
 		searchParams.get('sortBy') || 'deadline',
 	);
@@ -45,37 +48,35 @@ export function TasksContent() {
 		return () => clearTimeout(timer);
 	}, [search]);
 
-	// Синхронизация состояния с URL-параметрами
-	useEffect(() => {
-		const params = new URLSearchParams();
-		if (debouncedSearch) params.set('search', debouncedSearch);
-		if (deadlineSoon) params.set('deadlineSoon', 'true');
-		if (selectedSkillIds.length > 0)
-			params.set('skillIds', selectedSkillIds.join(','));
-		params.set('sortBy', sortBy);
-		params.set('page', page.toString());
-		router.replace(`?${params.toString()}`);
-	}, [debouncedSearch, deadlineSoon, selectedSkillIds, sortBy, page, router]);
-
 	const skills = useQuery({
 		queryKey: ['skills'],
 		queryFn: () => directoriesApi.skills(),
 	});
 
+	const categories = useQuery({
+		queryKey: ['categories'],
+		queryFn: () => directoriesApi.categories(),
+	});
+
 	const tasks = useQuery({
 		queryKey: [
 			'tasks',
-			debouncedSearch,
-			deadlineSoon,
-			selectedSkillIds,
-			sortBy,
-			page,
+			{
+				search: debouncedSearch,
+				deadlineSoon,
+				skillIds: selectedSkillIds,
+				categoryId: selectedCategoryId,
+				sortBy,
+				page,
+				limit,
+			},
 		],
 		queryFn: () =>
 			tasksApi.list({
 				search: debouncedSearch,
 				deadlineSoon,
 				skillIds: selectedSkillIds,
+				categoryId: selectedCategoryId,
 				sortBy,
 				page,
 				limit,
@@ -109,7 +110,7 @@ export function TasksContent() {
 
 			<Card className='p-6'>
 				<div className='grid gap-4 md:grid-cols-4'>
-					<div className='relative'>
+					<div className='relative md:col-span-2'>
 						<Search className='absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500' />
 						<Input
 							placeholder='Поиск задач...'
@@ -140,6 +141,27 @@ export function TasksContent() {
 							<span className='text-sm'>Дедлайн &lt; 24ч</span>
 						</label>
 					</div>
+
+					<Select
+						onValueChange={(value) =>
+							setSelectedCategoryId(value === 'all' ? null : value)
+						}
+						value={selectedCategoryId || 'all'}
+					>
+						<SelectTrigger>
+							<SelectValue placeholder='Категория' />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value='all'>Все категории</SelectItem>
+							{categories.data?.data.map(
+								(category: { id: string; name: string }) => (
+									<SelectItem key={category.id} value={category.id}>
+										{category.name}
+									</SelectItem>
+								),
+							)}
+						</SelectContent>
+					</Select>
 
 					<Select onValueChange={addSkill}>
 						<SelectTrigger>

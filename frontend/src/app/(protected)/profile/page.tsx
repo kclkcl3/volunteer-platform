@@ -1,10 +1,8 @@
 'use client';
-
 import { useQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { usersApi } from '@/lib/api';
-
 export default function ProfilePage() {
 	const me = useQuery({ queryKey: ['me'], queryFn: () => usersApi.me() });
 	const user = me.data?.data;

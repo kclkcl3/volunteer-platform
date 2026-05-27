@@ -1,125 +1,128 @@
-Ты senior fullstack engineer, UX engineer и production reviewer.
+Ты senior staff engineer и technical lead.
 
-Нужно выполнить крупный набор исправлений и доработок существующего fullstack проекта платформы взаимопомощи студентов.
-
-Стек:
-
-- Next.js App Router
-- TypeScript
-- TailwindCSS
-- shadcn/ui
-- TanStack Query
-- NestJS
-- Prisma
-- PostgreSQL
-- JWT Auth
-
-==================================================
-
-# ВАЖНО
-
-==================================================
+Твоя задача — провести production-grade refactoring существующего fullstack проекта платформы взаимопомощи студентов.
 
 Проект уже существует.
-
-НЕ переписывать с нуля.
-
-Нужно:
-
-- провести глубокий refactor;
-- исправить баги;
-- доработать UX;
-- исправить workflow;
-- улучшить SQL-layer;
-- стабилизировать frontend/backend.
-
-Работать production-grade подходом.
+НЕ переписывать его с нуля.
+Работать только через incremental refactor.
 
 ==================================================
 
-# UI BUG — STATUS BADGE
+# ОБЩИЕ ПРАВИЛА
 
 ==================================================
 
-Сейчас статус задачи отображается криво:
+1.
 
-- badge слишком большой;
-- текст маленький;
-- border-radius ломает layout.
+Не ломать существующий функционал.
 
-На скриншоте видно проблему.
+2.
 
-Нужно:
+Каждое изменение должно:
 
-- исправить размеры badge;
-- выровнять padding;
-- исправить typography;
-- сделать responsive status badge;
-- убрать лишнюю высоту;
-- привести к нормальному compact UI.
+- компилироваться;
+- запускаться;
+- проходить проверки;
+- не ломать предыдущий функционал.
+
+3.
+
+Все изменения делать production-grade подходом.
+
+4.
 
 Использовать:
 
-- inline-flex
-- items-center
-- proper height
-- whitespace-nowrap
-- rounded-full
-- correct padding
+- strict TypeScript;
+- proper RBAC;
+- transaction safety;
+- SQL-first approach;
+- reusable architecture;
+- loading states;
+- error handling;
+- query invalidation.
+
+5.
+
+Перед любым изменением:
+
+- проанализировать текущую реализацию;
+- найти root cause;
+- проверить зависимости;
+- убедиться, что изменение не ломает workflow.
 
 ==================================================
 
-# COMMENTS SYSTEM
+# TASK WORKFLOW
 
 ==================================================
 
-Добавить полноценную систему комментариев.
+Использовать workflow:
 
-Нужно:
+draft
+→ published
+→ in_progress
+→ on_review
+→ completed
 
-- replies to comments;
-- nested comments;
-- delete comments;
-- edit comments;
-- timestamps;
-- soft delete.
+Задачи с выбранным исполнителем:
 
-Удалять комментарии могут:
+- не должны отображаться в общем feed.
 
-- author;
-- admin.
+В общем списке задач показывать ТОЛЬКО:
+
+- published/open tasks;
+- без executor.
+
+==================================================
+
+# RESPONSES
+
+==================================================
+
+На странице "Мои отклики":
+
+- добавить кнопку "Отозвать отклик".
+
+Правила:
+
+- response может отозвать только его author;
+- withdraw доступен только пока executor не выбран;
+- после выбора executor кнопка скрывается.
 
 Также:
 
-- убрать комментарии из draft-задач.
+- после отправки response:
+  - disable form;
+  - disable button;
+  - loading state;
+  - prevent duplicate submit.
 
 ==================================================
 
-# RESPONSE BUTTON BUG
+# TASK FEED
 
 ==================================================
 
-Сейчас кнопка "Select" отображается даже на чужих задачах.
+Полностью исправить task feed.
 
 Исправить:
 
-- показывать кнопку выбора исполнителя ТОЛЬКО автору задачи;
-- исполнители не должны видеть select button;
-- использовать proper permission checks.
+- filtering;
+- search;
+- sorting;
+- pagination;
+- query invalidation.
 
-==================================================
+Добавить:
 
-# RESPONSE FORM UX
+- filter by skills;
+- filter by categories;
+- deadline < 24h;
+- sort by deadline;
+- search by task title.
 
-==================================================
-
-После отправки отклика:
-
-- disable form;
-- disable submit button;
-- loading spinner;
-- prevent duplicate submit;
-- optimistic update optional.
+Фильтры должны реально работать через backend/API/SQL.
 
 ==================================================
 
@@ -127,11 +130,14 @@
 
 ==================================================
 
-Добавить возможность переходить:
+Сделать переход на profile page из:
 
-- на профиль автора задачи;
-- на профиль автора комментария;
-- на профиль автора отклика.
+- comments;
+- responses;
+- task cards;
+- task author;
+- executor;
+- reviews.
 
 Все username/avatar/name должны быть clickable.
 
@@ -141,69 +147,57 @@
 
 ==================================================
 
-Полностью переработать profile page.
-
-Показывать:
+В профиле отображать:
 
 - рейтинг пользователя;
 - skills;
 - completed tasks;
 - created tasks;
-- reviews from customers.
+- reviews.
+
+Completed tasks:
+
+- показывать список задач;
+- названия должны быть clickable links.
+
+==================================================
+
+# REVIEW SYSTEM
+
+==================================================
+
+Сейчас review автоматически ставит rating = 5.
+
+Исправить:
+
+- добавить выбор оценки от 1 до 5;
+- stars/radio/select UI;
+- backend validation;
+- frontend validation;
+- automatic rating recalculation.
+
+==================================================
+
+# COMMENTS SYSTEM
+
+==================================================
 
 Добавить:
 
-- editable profile;
-- profile tabs;
-- proper statistics.
+- replies to comments;
+- nested comments;
+- edit comments;
+- delete comments;
+- soft delete.
 
-В completed tasks показывать:
+Комментарии в draft-задачах:
 
-- только реально завершенные задачи.
+- должны быть отключены.
 
-==================================================
+Удалять comment могут:
 
-# TASK FEED
-
-==================================================
-
-Полностью починить страницу задач.
-
-Нужно:
-
-- исправить отображение tasks;
-- исправить search;
-- исправить filters;
-- исправить pagination;
-- исправить sorting.
-
-Добавить filters:
-
-- by skills;
-- by categories;
-- deadline < 24h;
-- sort by deadline.
-
-Поиск должен:
-
-- искать по title;
-- работать корректно;
-- быть debounce-based.
-
-==================================================
-
-# TASK VISIBILITY
-
-==================================================
-
-В общем списке должны отображаться ТОЛЬКО:
-
-- published/open tasks;
-- задачи без назначенного исполнителя.
-
-Если executor выбран:
-
-- скрывать задачу из общего списка.
+- author;
+- admin.
 
 ==================================================
 
@@ -213,15 +207,27 @@
 
 При создании задачи:
 
-- расширить список skills;
-- добавить вариант "Другое";
-- если выбрано "Другое" — детали пишутся в description.
+- использовать categories;
+- использовать skills;
+- добавить option "Другое".
 
-Также:
+Если выбрано "Другое":
 
-- вернуть categories;
-- categories должны работать корректно;
-- filters по категориям должны работать.
+- детали указываются в description.
+
+==================================================
+
+# TOKEN HANDLING
+
+==================================================
+
+При expiration JWT token:
+
+- clear auth state;
+- clear cached queries;
+- redirect to /login;
+- показать toast:
+  "Сессия истекла. Выполните вход снова."
 
 ==================================================
 
@@ -229,104 +235,47 @@
 
 ==================================================
 
-Добавить полноценные toast notifications.
+Добавить toast notifications для:
 
-Нужно:
-
-- показывать backend validation errors;
-- показывать success messages;
-- показывать auth errors;
-- показывать workflow errors.
+- validation errors;
+- auth errors;
+- workflow errors;
+- permission errors;
+- success messages.
 
 Примеры:
 
-- "Нельзя откликнуться на собственную задачу"
 - "Отклик успешно отправлен"
 - "Недостаточно прав"
 - "Сессия истекла"
+- "Нельзя откликнуться на собственную задачу"
 
 Использовать:
 
-- sonner/shadcn toast system.
+- shadcn/sonner toast system.
 
 ==================================================
 
-# REVIEW SYSTEM
+# UI/UX FIXES
 
 ==================================================
 
-После принятия работы:
+Исправить:
 
-- заказчик должен иметь возможность поставить оценку 1–5;
-- review modal/dialog;
-- optional review text;
-- automatic rating recalculation.
+- status badge layout;
+- spacing;
+- typography;
+- responsive layout;
+- broken alignment.
 
-Исполнитель:
+Status badges:
 
-- НЕ должен видеть кнопку "Принять работу";
-- исполнитель может только:
-  - "Сдать решение"
-  - "Отозвать отклик" (если еще не выбран).
-
-==================================================
-
-# AUTH / TOKEN HANDLING
-
-==================================================
-
-Если JWT token expired:
-
-- automatic logout;
-- redirect to /login;
-- clear auth state;
-- clear cached queries.
-
-==================================================
-
-# RESPONSE WITHDRAW
-
-==================================================
-
-Исполнитель может:
-
-- отозвать свой отклик,
-  ПОКА заказчик еще не выбрал исполнителя.
-
-После выбора:
-
-- withdraw disabled.
-
-==================================================
-
-# REWORK FLOW
-
-==================================================
-
-После проверки заказчик может:
-
-1.
-
-Approve:
-→ completed
-
-2.
-
-Request rework:
-→ in_progress
-→ тот же исполнитель
-
-3.
-
-Reopen task:
-→ published
-→ executor removed
-→ task visible again
-
-Исполнитель:
-
-- не должен видеть лишние workflow buttons;
-- только "Сдать решение".
+- compact;
+- inline-flex;
+- proper padding;
+- proper height;
+- rounded-full;
+- no oversized containers.
 
 ==================================================
 
@@ -334,58 +283,41 @@ Reopen task:
 
 ==================================================
 
-Оставить только страницы:
+Оставить страницы:
 
 1.
 
-Профиль
-Показывать:
-
-- рейтинг
-- отзывы
-- completed tasks
+Profile
 
 2.
 
-Мои созданные задачи
-Включая:
+My Created Tasks
+Со status chips:
 
-- drafts
+- draft
 - published
 - in_progress
 - on_review
 - completed
 
-Добавить status filter chips/bubbles.
-
-По умолчанию:
-
-- все статусы активны.
-
 3.
 
-Задачи, над которыми я работаю
-Статусы:
+Tasks I Work On
+Со status chips:
 
 - responses
 - in_progress
 - on_review
 - completed
 
-Также:
+Скрыть:
 
-- status chips.
+- dashboard/panel pages;
+- лишние sidebar items.
 
-==================================================
+Notifications page:
 
-# SIDEBAR
-
-==================================================
-
-Нужно:
-
-- скрыть вкладку "Панель управления";
-- перевести notifications page полностью на русский язык.
+- полностью перевести на русский язык.
 
 ==================================================
 
@@ -409,78 +341,69 @@ Reopen task:
 
 - task feed;
 - filters;
-- profile statistics;
+- search;
 - ratings;
-- completed tasks counters;
-- search queries.
+- profile statistics;
+- completed tasks queries.
 
-ORM использовать:
-
-- как transport layer.
+ORM использовать только как transport layer.
 
 ==================================================
 
-# CODE QUALITY
+# DATABASE
 
 ==================================================
 
-Требования:
+Проверить:
 
-- strict TypeScript;
-- no any;
-- production-grade architecture;
-- reusable components;
-- proper RBAC;
-- loading states;
-- error boundaries;
-- query invalidation;
-- transaction safety;
-- responsive UI.
+- relations;
+- indexes;
+- workflow consistency;
+- constraints;
+- soft delete;
+- updatedAt handling.
 
 ==================================================
 
-# OUTPUT FORMAT
+# TESTING
 
 ==================================================
+
+Обновить:
+
+- workflow tests;
+- permissions tests;
+- response tests;
+- review tests;
+- filtering tests;
+- auth tests.
+
+==================================================
+
+# IMPLEMENTATION STRATEGY
+
+==================================================
+
+Работать ТОЛЬКО поэтапно.
 
 Для каждой задачи:
 
-1.
+1. Problem analysis
+2. Root cause
+3. Backend changes
+4. Frontend changes
+5. SQL changes
+6. Permission changes
+7. UI/UX changes
+8. Tests
+9. Definition of done
 
-Problem analysis
+Не делать giant refactor одним diff.
 
-2.
+Каждый этап должен быть:
 
-Root cause
-
-3.
-
-Backend changes
-
-4.
-
-Frontend changes
-
-5.
-
-SQL changes
-
-6.
-
-Permissions changes
-
-7.
-
-UI/UX changes
-
-8.
-
-Tests
-
-9.
-
-Definition of done
-
-Работать поэтапно.
-Не ломать существующий функционал.
+- завершен;
+- протестирован;
+- стабилен;
+- не ломать предыдущие части системы.
 

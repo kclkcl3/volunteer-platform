@@ -103,10 +103,17 @@ export class ResponsesService {
 	}
 
 	async withdraw(id: string, userId: string) {
-		const response = await this.prisma.response.findUnique({ where: { id } });
+		const response = await this.prisma.response.findUnique({
+			where: { id },
+			include: { task: true },
+		});
 		if (!response) throw new NotFoundException('Response not found');
 		if (response.responderId !== userId)
 			throw new ForbiddenException('Response belongs only to its author');
+		if (response.task.executorId)
+			throw new BadRequestException(
+				'Cannot withdraw response after executor is selected',
+			);
 		if (response.status !== ResponseStatus.pending)
 			throw new BadRequestException('Only pending response can be withdrawn');
 		return this.prisma.response.update({

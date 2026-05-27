@@ -9,6 +9,7 @@ export type TaskStatus =
 export type ResponseStatus = 'pending' | 'accepted' | 'rejected' | 'withdrawn';
 
 export type Skill = { id: string; name: string };
+export type Category = { id: string; name: string };
 export type User = {
 	id: string;
 	firstName: string;
@@ -17,7 +18,17 @@ export type User = {
 	rating: string;
 	completedTasksCount: number;
 	role?: 'student' | 'admin';
+	skills?: Skill[];
+	createdTasks?: { id: string; title: string }[];
+	completedTasks?: { id: string; title: string }[];
+	reviews?: {
+		id: string;
+		rating: number;
+		text: string;
+		author: { id: string; firstName: string; lastName: string };
+	}[];
 };
+
 export type Task = {
 	id: string;
 	title: string;
@@ -123,6 +134,7 @@ export const tasksApi = {
 			};
 			return res;
 		}),
+	findOne: (id: string) => api.get<Task>(`/tasks/${id}`),
 	create: (data: unknown) => api.post<Task>('/tasks', data),
 	update: (id: string, data: unknown) => api.patch<Task>(`/tasks/${id}`, data),
 	publish: (id: string) => api.post<Task>(`/tasks/${id}/publish`),
@@ -157,12 +169,16 @@ export const reviewsApi = {
 export const directoriesApi = {
 	skills: () => api.get<Skill[]>('/skills'),
 	createSkill: (name: string) => api.post<Skill>('/skills', { name }),
+	categories: () => api.get<Category[]>('/categories'),
 };
 
 export const usersApi = {
 	me: () => api.get<User>('/users/me'),
 	top: () => api.get<User[]>('/users/top'),
+	get: (id: string) => api.get<User>(`/users/${id}`),
 };
+
+
 
 export const notificationsApi = {
 	list: () => api.get('/notifications'),

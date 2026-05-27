@@ -97,6 +97,7 @@ export class TasksService {
 				status,
 				publishedAt: status === TaskStatus.published ? new Date() : null,
 				customerId,
+				categoryId: dto.categoryId,
 				skills: { create: dto.skillIds.map((skillId) => ({ skillId })) },
 				statusHistory: {
 					create: {
@@ -121,121 +122,123 @@ export class TasksService {
 
 	async findAll(query: TaskQueryDto, userId?: string, role?: UserRole) {
 		const { skip, take } = getPagination(query);
-		// Белый список для предотвращения SQL-инъекций
-		const allowedSortColumns: Record<string, string> = {
-			createdAt: 't."createdAt"',
-			deadline: 't."deadline"',
-			status: 't."status"',
+
+		const where: Prisma.TaskWhereInput = {
+			deletedAt: null,
 		};
-		const allowedSortOrders = ['ASC', 'DESC'];
-		const sortColumn =
-			allowedSortColumns[query.sortBy || 'deadline'] || 't."deadline"';
-		const sortOrder = allowedSortOrders.includes(
-			(query.order || 'asc').toUpperCase(),
-		)
-			? (query.order || 'asc').toUpperCase()
-			: 'ASC';
 
-		// Строим условия фильтрации для сырого SQL
-		const conditions: string[] = ['t."deletedAt" IS NULL'];
-		const params: any[] = [];
+		if (!query.myTasks) {
+			where.status = TaskStatus.published;
+			where.executorId = null;
+		} else if (userId) {
+			where.OR = [{ customerId: userId }, { executorId: userId }];
+		}
 
-		if (query.activeOnly) {
-			// В общем списке показываем только задачи, которые еще не имеют исполнителя (только опубликованные)
-			conditions.push(`t.status = 'published' AND t."executorId" IS NULL`);
-		}
-		if (query.myTasks && userId) {
-			conditions.push(
-				`(t."customerId" = $${params.length + 1} OR t."executorId" = $${params.length + 1})`,
-			);
-			params.push(userId);
-		}
 		if (query.search) {
-			conditions.push(
-				`(t.title ILIKE $${params.length + 1} OR t.description ILIKE $${params.length + 1})`,
-			);
-			params.push(`%${query.search}%`);
+			where.OR = [
+				{ title: { contains: query.search, mode: 'insensitive' } },
+				{ description: { contains: query.search, mode: 'insensitive' } },
+			];
 		}
+
 		if (query.categoryId) {
-			conditions.push(`t."categoryId" = $${params.length + 1}`);
-			params.push(query.categoryId);
+			where.categoryId = query.categoryId;
 		}
+
 		if (query.status) {
-			conditions.push(`t.status = $${params.length + 1}`);
-			params.push(query.status);
+			where.status = query.status;
 		}
+
 		if (query.deadlineSoon) {
-			conditions.push(`t.deadline < NOW() + INTERVAL '24 hours'`);
+			where.deadline = { lt: new Date(Date.now() + 24 * 60 * 60 * 1000) };
 		}
+
 		if (query.skillIds?.length) {
-			conditions.push(
-				`EXISTS (SELECT 1 FROM task_skills ts JOIN skills s ON ts."skillId" = s.id WHERE ts."taskId" = t.id AND s.id = ANY($${params.length + 1}))`,
-			);
-			params.push(query.skillIds);
+			where.skills = {
+				every: {
+					skillId: {
+						in: query.skillIds,
+					},
+				},
+			};
 		}
 
-		const whereClause = conditions.length
-			? `WHERE ${conditions.join(' AND ')}`
-			: '';
+		const [total, items] = await this.prisma.$transaction([
+			this.prisma.task.count({ where }),
+			this.prisma.task.findMany({
+				where,
+				include: taskInclude,
+				orderBy: { [query.sortBy || 'deadline']: query.order || 'asc' },
+				skip,
+				take,
+			}),
+		]);
 
-		// Получаем общее количество задач
-		const totalResult = await this.prisma.$queryRaw<[{ count: bigint }]>(
-			Prisma.sql`SELECT COUNT(*) as count FROM tasks t ${Prisma.raw(whereClause)}`,
-			...params,
-		);
-		const total = Number(totalResult[0].count);
+		return {
+			items,
+			meta: { total, page: query.page, limit: query.limit },
+		};
+	}
 
-		// Основной запрос с пагинацией и сортировкой (добавили подгрузку skills в JSON!)
-		const items = await this.prisma.$queryRaw<any[]>(
+	async findOne(id: string, userId?: string, role?: UserRole) {
+		const tasks = await this.prisma.$queryRaw<any[]>(
 			Prisma.sql`
-				SELECT 
-					t.id, t.title, t.description, t."deadline", t."status", t."publishedAt", t."createdAt", t."updatedAt",
+				SELECT
+					t.id, t.title, t.description, t.deadline, t.status, t."publishedAt", t."createdAt", t."updatedAt", t."customerId", t."executorId", t."categoryId",
 					json_build_object(
 						'id', c.id, 'firstName', c."firstName", 'lastName', c."lastName", 'rating', c.rating, 'completedTasksCount', c."completedTasksCount"
 					) as customer,
 					CASE WHEN e.id IS NOT NULL THEN json_build_object(
 						'id', e.id, 'firstName', e."firstName", 'lastName', e."lastName", 'rating', e.rating, 'completedTasksCount', e."completedTasksCount"
 					) ELSE NULL END as executor,
-					-- Подгружаем все навыки задачи в виде массива JSON объектов
 					COALESCE((
-						SELECT json_agg(json_build_object('skill', json_build_object('id', s.id, 'name', s.name)) )
+						SELECT json_agg(json_build_object('skill', s))
 						FROM task_skills ts
 						JOIN skills s ON ts."skillId" = s.id
 						WHERE ts."taskId" = t.id
 					), '[]'::json) as skills,
-					(SELECT COUNT(*) FROM comments WHERE "taskId" = t.id) as comments_count,
-					(SELECT COUNT(*) FROM responses WHERE "taskId" = t.id) as responses_count
+					COALESCE((
+						SELECT json_agg(
+							json_build_object(
+								'id', r.id,
+								'createdAt', r."createdAt",
+								'status', r.status,
+								'message', r.message,
+								'responder', json_build_object(
+									'id', resp.id, 'firstName', resp."firstName", 'lastName', resp."lastName", 'rating', resp.rating, 'completedTasksCount', resp."completedTasksCount"
+								)
+							) ORDER BY r."createdAt" DESC
+						)
+						FROM responses r
+						JOIN users resp ON r."responderId" = resp.id
+						WHERE r."taskId" = t.id
+					), '[]'::json) as responses,
+					(
+						SELECT json_build_object('id', rev.id, 'rating', rev.rating, 'comment', rev.text, 'createdAt', rev."createdAt")
+						FROM reviews rev
+						WHERE rev."taskId" = t.id
+						LIMIT 1
+					) as review,
+					COALESCE((
+						SELECT json_agg(sh ORDER BY sh."createdAt" ASC)
+						FROM task_status_history sh
+						WHERE sh."taskId" = t.id
+					), '[]'::json) as "statusHistory",
+					(SELECT COUNT(*) FROM comments WHERE "taskId" = t.id)::int as "commentsCount",
+					(SELECT COUNT(*) FROM responses WHERE "taskId" = t.id)::int as "responsesCount"
 				FROM tasks t
 				LEFT JOIN users c ON t."customerId" = c.id
 				LEFT JOIN users e ON t."executorId" = e.id
-				${Prisma.raw(whereClause)}
-				ORDER BY ${Prisma.raw(sortColumn)} ${Prisma.raw(sortOrder)}
-				LIMIT ${Prisma.raw(String(take))} OFFSET ${Prisma.raw(String(skip))}
+				WHERE t.id = ${id} AND t."deletedAt" IS NULL
 			`,
-			...params,
 		);
 
-		return {
-			items: items.map((item) => ({
-				...item,
-				// Гарантируем, что все массивы всегда существуют
-				skills: item.skills || [],
-				responses: item.responses || [],
-				_count: {
-					comments: Number(item.comments_count),
-					responses: Number(item.responses_count),
-				},
-			})),
-			meta: { total, page: query.page, limit: query.limit },
-		};
-	}
+		if (tasks.length === 0) {
+			throw new NotFoundException('Task not found');
+		}
 
-	async findOne(id: string, userId?: string, role?: UserRole) {
-		const task = await this.prisma.task.findFirst({
-			where: { id, deletedAt: null },
-			include: taskInclude,
-		});
-		if (!task) throw new NotFoundException('Task not found');
+		const task = tasks[0];
+
 		if (
 			task.status === TaskStatus.draft &&
 			task.customerId !== userId &&
@@ -243,12 +246,14 @@ export class TasksService {
 		) {
 			throw new ForbiddenException('Draft tasks are visible only to owner');
 		}
-		// Гарантируем, что все массивы всегда существуют
+
 		return {
 			...task,
-			skills: task.skills || [],
-			responses: task.responses || [],
-			_count: task._count || { comments: 0, responses: 0 },
+			statusHistory: task.statusHistory,
+			_count: {
+				comments: task.commentsCount,
+				responses: task.responsesCount,
+			},
 		};
 	}
 
@@ -257,30 +262,85 @@ export class TasksService {
 		status?: TaskStatus,
 		taskType?: 'created' | 'work',
 	) {
-		const where: Prisma.TaskWhereInput = {
-			deletedAt: null,
-			status,
-		};
+		const conditions: string[] = ['t."deletedAt" IS NULL'];
+		const params: any[] = [userId]; // userId is always $1
 
 		if (taskType === 'created') {
-			where.customerId = userId;
+			conditions.push(`t."customerId" = $1`);
 		} else if (taskType === 'work') {
-			where.executorId = userId;
+			conditions.push(`t."executorId" = $1`);
 		} else {
-			where.OR = [{ customerId: userId }, { executorId: userId }];
+			conditions.push(`(t."customerId" = $1 OR t."executorId" = $1)`);
 		}
 
-		const tasks = await this.prisma.task.findMany({
-			where,
-			include: taskInclude,
-			orderBy: { createdAt: 'desc' },
-		});
-		// Гарантируем, что все массивы всегда существуют
-		return tasks.map((task) => ({
-			...task,
-			skills: task.skills || [],
-			responses: task.responses || [],
-			_count: task._count || { comments: 0, responses: 0 },
+		if (status) {
+			conditions.push(`t.status = $${params.length + 1}`);
+			params.push(status);
+		}
+
+		const whereClause = `WHERE ${conditions.join(' AND ')}`;
+
+		const items = await this.prisma.$queryRaw<any[]>(
+			Prisma.sql`
+            SELECT
+                t.id, t.title, t.description, t.deadline, t.status, t."publishedAt", t."createdAt", t."updatedAt", t."customerId", t."executorId", t."categoryId",
+                json_build_object(
+                    'id', c.id, 'firstName', c."firstName", 'lastName', c."lastName", 'rating', c.rating, 'completedTasksCount', c."completedTasksCount"
+                ) as customer,
+                CASE WHEN e.id IS NOT NULL THEN json_build_object(
+                    'id', e.id, 'firstName', e."firstName", 'lastName', e."lastName", 'rating', e.rating, 'completedTasksCount', e."completedTasksCount"
+                ) ELSE NULL END as executor,
+                COALESCE((
+                    SELECT json_agg(json_build_object('skill', s))
+                    FROM task_skills ts
+                    JOIN skills s ON ts."skillId" = s.id
+                    WHERE ts."taskId" = t.id
+                ), '[]'::json) as skills,
+                COALESCE((
+                    SELECT json_agg(
+                        json_build_object(
+                            'id', r.id,
+                            'createdAt', r."createdAt",
+                            'status', r.status,
+                            'message', r.message,
+                            'responder', json_build_object(
+                                'id', resp.id, 'firstName', resp."firstName", 'lastName', resp."lastName", 'rating', resp.rating, 'completedTasksCount', resp."completedTasksCount"
+                            )
+                        ) ORDER BY r."createdAt" DESC
+                    )
+                    FROM responses r
+                    JOIN users resp ON r."responderId" = resp.id
+                    WHERE r."taskId" = t.id
+                ), '[]'::json) as responses,
+                (
+                    SELECT json_build_object('id', rev.id, 'rating', rev.rating, 'comment', rev.text, 'createdAt', rev."createdAt")
+                    FROM reviews rev
+                    WHERE rev."taskId" = t.id
+                    LIMIT 1
+                ) as review,
+                COALESCE((
+                    SELECT json_agg(sh ORDER BY sh."createdAt" ASC)
+                    FROM task_status_history sh
+                    WHERE sh."taskId" = t.id
+                ), '[]'::json) as "statusHistory",
+                (SELECT COUNT(*) FROM comments WHERE "taskId" = t.id)::int as "commentsCount",
+                (SELECT COUNT(*) FROM responses WHERE "taskId" = t.id)::int as "responsesCount"
+            FROM tasks t
+            LEFT JOIN users c ON t."customerId" = c.id
+            LEFT JOIN users e ON t."executorId" = e.id
+            ${Prisma.raw(whereClause)}
+            ORDER BY t."createdAt" DESC
+        `,
+			...params,
+		);
+
+		return items.map((item) => ({
+			...item,
+			statusHistory: item.statusHistory,
+			_count: {
+				comments: item.commentsCount,
+				responses: item.responsesCount,
+			},
 		}));
 	}
 
@@ -295,6 +355,7 @@ export class TasksService {
 			data: {
 				title: dto.title,
 				description: dto.description,
+				categoryId: dto.categoryId,
 				deadline: dto.deadline ? new Date(dto.deadline) : undefined,
 				skills: dto.skillIds
 					? {
@@ -482,31 +543,45 @@ export class TasksService {
 	}
 
 	async recommended(userId: string) {
-		const skillIds = (
-			await this.prisma.studentSkill.findMany({
-				where: { userId },
-				select: { skillId: true },
-			})
-		).map((s) => s.skillId);
-		const recommendedTasks = await this.prisma.task.findMany({
-			where: {
-				deletedAt: null,
-				status: TaskStatus.published,
-				customerId: { not: userId },
-				skills: skillIds.length
-					? { some: { skillId: { in: skillIds } } }
-					: undefined,
+		const items = await this.prisma.$queryRaw<any[]>`
+			WITH user_skills AS (
+				SELECT "skillId" FROM student_skills WHERE "userId" = ${userId}
+			)
+			SELECT
+				t.id, t.title, t.description, t."deadline", t."status", t."publishedAt", t."createdAt", t."updatedAt",
+				json_build_object(
+					'id', c.id, 'firstName', c."firstName", 'lastName', c."lastName", 'rating', c.rating, 'completedTasksCount', c."completedTasksCount"
+				) as customer,
+				COALESCE((
+					SELECT json_agg(json_build_object('skill', json_build_object('id', s.id, 'name', s.name)))
+					FROM task_skills ts
+					JOIN skills s ON ts."skillId" = s.id
+					WHERE ts."taskId" = t.id
+				), '[]'::json) as skills,
+				(SELECT COUNT(*) FROM comments WHERE "taskId" = t.id) as comments_count,
+				(SELECT COUNT(*) FROM responses WHERE "taskId" = t.id) as responses_count
+			FROM tasks t
+			JOIN users c ON t."customerId" = c.id
+			WHERE
+				t."deletedAt" IS NULL
+				AND t.status = 'published'
+				AND t."customerId" != ${userId}
+				AND EXISTS (
+					SELECT 1
+					FROM task_skills ts
+					WHERE ts."taskId" = t.id AND ts."skillId" IN (SELECT "skillId" FROM user_skills)
+				)
+			ORDER BY t.deadline ASC, t."createdAt" DESC
+			LIMIT 30
+		`;
+
+		return items.map((item) => ({
+			...item,
+			skills: item.skills || [],
+			_count: {
+				comments: Number(item.comments_count),
+				responses: Number(item.responses_count),
 			},
-			include: taskInclude,
-			orderBy: [{ deadline: 'asc' }, { createdAt: 'desc' }],
-			take: 30,
-		});
-		// Гарантируем, что все массивы всегда существуют
-		return recommendedTasks.map((task) => ({
-			...task,
-			skills: task.skills || [],
-			responses: task.responses || [],
-			_count: task._count || { comments: 0, responses: 0 },
 		}));
 	}
 

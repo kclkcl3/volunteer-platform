@@ -46,9 +46,9 @@ export function TaskCard({ task }: { task: Task }) {
 					<MessageSquare className='mr-1 inline h-4 w-4' />
 					{task._count?.responses ?? 0}
 				</span>
-				<span>
+				<Link href={`/users/${task.customer.id}`} className='hover:underline'>
 					{task.customer.firstName} {task.customer.lastName}
-				</span>
+				</Link>
 			</div>
 		</Card>
 	);

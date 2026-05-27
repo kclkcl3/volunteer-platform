@@ -67,6 +67,9 @@ export class CreateTaskDto {
 	title: string;
 
 	@IsString()
+	categoryId: string;
+
+	@IsString()
 	@MinLength(20)
 	description: string;
 
@@ -94,6 +97,10 @@ export class UpdateTaskDto {
 	@IsString()
 	@MinLength(20)
 	description?: string;
+
+	@IsOptional()
+	@IsString()
+	categoryId?: string;
 
 	@IsOptional()
 	@IsArray()

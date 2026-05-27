@@ -63,9 +63,4 @@ export class UsersController {
 	findOne(@Param('id') id: string) {
 		return this.users.findOne(id);
 	}
-
-	@Get(':id/stats')
-	getProfileStats(@Param('id') id: string) {
-		return this.users.getProfileStats(id);
-	}
 }

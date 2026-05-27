@@ -1,119 +1,197 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 
-const userSelect = {
-  id: true,
-  firstName: true,
-  lastName: true,
-  middleName: true,
-  email: true,
-  avatar: true,
-  bio: true,
-  role: true,
-  rating: true,
-  completedTasksCount: true,
-  registrationDate: true,
-  lastSeenAt: true,
-  skills: { include: { skill: true } },
-} as const;
-
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+	constructor(private readonly prisma: PrismaService) {}
 
-  me(id: string) {
-    return this.prisma.user.findUniqueOrThrow({ where: { id }, select: userSelect });
-  }
+	async me(id: string) {
+		const result = await this.prisma.$queryRaw<any[]>`
+			SELECT
+				u.id,
+				u."firstName",
+				u."lastName",
+				u.email,
+				u.role,
+				u.rating,
+				u."completedTasksCount",
+				COALESCE(s.skills, '[]'::json) as skills,
+				COALESCE(ct.tasks, '[]'::json) as "createdTasks",
+				COALESCE(et.tasks, '[]'::json) as "completedTasks",
+				COALESCE(r.reviews, '[]'::json) as reviews
+			FROM users u
+			LEFT JOIN (
+				SELECT
+					ss."userId",
+					json_agg(json_build_object('id', s.id, 'name', s.name)) as skills
+				FROM student_skills ss
+				JOIN skills s ON ss."skillId" = s.id
+				GROUP BY ss."userId"
+			) s ON u.id = s."userId"
+			LEFT JOIN (
+				SELECT
+					t."customerId",
+					json_agg(json_build_object('id', t.id, 'title', t.title)) as tasks
+				FROM tasks t
+				GROUP BY t."customerId"
+			) ct ON u.id = ct."customerId"
+			LEFT JOIN (
+				SELECT
+					t."executorId",
+					json_agg(json_build_object('id', t.id, 'title', t.title)) as tasks
+				FROM tasks t
+				WHERE t.status = 'completed'
+				GROUP BY t."executorId"
+			) et ON u.id = et."executorId"
+			LEFT JOIN (
+				SELECT
+					r."reviewedId",
+					json_agg(
+						json_build_object(
+							'id', r.id,
+							'rating', r.rating,
+							'text', r.text,
+							'author', json_build_object(
+								'id', a.id,
+								'firstName', a."firstName",
+								'lastName', a."lastName"
+							)
+						)
+					) as reviews
+				FROM reviews r
+				JOIN users a ON r."reviewerId" = a.id
+				GROUP BY r."reviewedId"
+			) r ON u.id = r."reviewedId"
+			WHERE u.id = ${id} AND u."deletedAt" IS NULL
+		`;
 
-  updateMe(id: string, dto: UpdateProfileDto) {
-    return this.prisma.user.update({ where: { id }, data: dto, select: userSelect });
-  }
+		if (!result.length || !result[0]) {
+			throw new NotFoundException('User not found');
+		}
 
-  async findOne(id: string) {
-    const user = await this.prisma.user.findFirst({ where: { id, deletedAt: null }, select: userSelect });
-    if (!user) throw new NotFoundException('User not found');
-    return user;
-  }
+		return result[0];
+	}
 
-  top(limit = 10) {
-    return this.prisma.user.findMany({
-      where: { deletedAt: null, isBlocked: false },
-      select: userSelect,
-      orderBy: [{ rating: 'desc' }, { completedTasksCount: 'desc' }],
-      take: limit,
-    });
-  }
+	updateMe(id: string, dto: UpdateProfileDto) {
+		return this.prisma.user.update({
+			where: { id },
+			data: dto,
+		});
+	}
 
-  addSkill(userId: string, skillId: string) {
-    return this.prisma.studentSkill.upsert({
-      where: { userId_skillId: { userId, skillId } },
-      update: {},
-      create: { userId, skillId },
-      include: { skill: true },
-    });
-  }
+	async findOne(id: string) {
+		const result = await this.prisma.$queryRaw<any[]>`
+			SELECT
+				u.id,
+				u."firstName",
+				u."lastName",
+				u.email,
+				u.role,
+				u.rating,
+				u."completedTasksCount",
+				COALESCE(s.skills, '[]'::json) as skills,
+				COALESCE(ct.tasks, '[]'::json) as "createdTasks",
+				COALESCE(et.tasks, '[]'::json) as "completedTasks",
+				COALESCE(r.reviews, '[]'::json) as reviews
+			FROM users u
+			LEFT JOIN (
+				SELECT
+					ss."userId",
+					json_agg(json_build_object('id', s.id, 'name', s.name)) as skills
+				FROM student_skills ss
+				JOIN skills s ON ss."skillId" = s.id
+				GROUP BY ss."userId"
+			) s ON u.id = s."userId"
+			LEFT JOIN (
+				SELECT
+					t."customerId",
+					json_agg(json_build_object('id', t.id, 'title', t.title)) as tasks
+				FROM tasks t
+				GROUP BY t."customerId"
+			) ct ON u.id = ct."customerId"
+			LEFT JOIN (
+				SELECT
+					t."executorId",
+					json_agg(json_build_object('id', t.id, 'title', t.title)) as tasks
+				FROM tasks t
+				WHERE t.status = 'completed'
+				GROUP BY t."executorId"
+			) et ON u.id = et."executorId"
+			LEFT JOIN (
+				SELECT
+					r."reviewedId",
+					json_agg(
+						json_build_object(
+							'id', r.id,
+							'rating', r.rating,
+							'text', r.text,
+							'author', json_build_object(
+								'id', a.id,
+								'firstName', a."firstName",
+								'lastName', a."lastName"
+							)
+						)
+					) as reviews
+				FROM reviews r
+				JOIN users a ON r."reviewerId" = a.id
+				GROUP BY r."reviewedId"
+			) r ON u.id = r."reviewedId"
+			WHERE u.id = ${id} AND u."deletedAt" IS NULL
+		`;
 
-  removeSkill(userId: string, skillId: string) {
-    return this.prisma.studentSkill.delete({ where: { userId_skillId: { userId, skillId } } });
-  }
+		if (!result.length || !result[0]) {
+			throw new NotFoundException('User not found');
+		}
 
-  async getProfileStats(userId: string) {
-    const baseUser = await this.prisma.user.findUniqueOrThrow({
-      where: { id: userId, deletedAt: null, isBlocked: false },
-      select: userSelect,
-    });
+		return result[0];
+	}
 
-    const [reviewsGot, executorTasks, customerTasks, responses] = await Promise.all([
-      this.prisma.review.findMany({
-        where: { reviewedId: userId },
-        select: {
-          rating: true,
-          text: true,
-          createdAt: true,
-          task: { select: { title: true } },
-          reviewerId: true,
-        },
-      }),
-      this.prisma.task.findMany({
-        where: { executorId: userId, status: 'completed' },
-        select: { id: true, title: true, deadline: true },
-      }),
-      this.prisma.task.findMany({
-        where: { customerId: userId, status: 'completed' },
-        select: { id: true, title: true },
-      }),
-      this.prisma.response.findMany({
-        where: { responderId: userId },
-        select: { id: true, status: true, task: { select: { title: true, status: true } } },
-      }),
-    ]);
+	top(limit = 10) {
+		return this.prisma.user.findMany({
+			where: { deletedAt: null, isBlocked: false },
+			select: {
+				id: true,
+				firstName: true,
+				lastName: true,
+				rating: true,
+				completedTasksCount: true,
+			},
+			orderBy: [{ rating: 'desc' }, { completedTasksCount: 'desc' }],
+			take: limit,
+		});
+	}
 
-    const avgRating = reviewsGot.length
-      ? reviewsGot.reduce((sum, r) => sum + r.rating, 0) / reviewsGot.length
-      : 0;
+	addSkill(userId: string, skillId: string) {
+		return this.prisma.studentSkill.upsert({
+			where: { userId_skillId: { userId, skillId } },
+			update: {},
+			create: { userId, skillId },
+			include: { skill: true },
+		});
+	}
 
-    return {
-      ...baseUser,
-      reviewsGot,
-      calculatedRating: Number(avgRating.toFixed(2)),
-      completedAsExecutor: executorTasks.length,
-      completedAsCreator: customerTasks.length,
-      totalResponses: responses.length,
-    };
-  }
+	removeSkill(userId: string, skillId: string) {
+		return this.prisma.studentSkill.delete({
+			where: { userId_skillId: { userId, skillId } },
+		});
+	}
 
-  async updateRatingAfterReview(userId: string) {
-    const reviews = await this.prisma.review.findMany({
-      where: { reviewedId: userId },
-      select: { rating: true },
-    });
-    const avgRating = reviews.length ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length : 0;
-    
-    return this.prisma.user.update({
-      where: { id: userId },
-      data: { rating: Number(avgRating.toFixed(2)) },
-      select: userSelect,
-    });
-  }
+	async updateRatingAfterReview(userId: string) {
+		const reviews = await this.prisma.review.findMany({
+			where: { reviewedId: userId },
+			select: { rating: true },
+		});
+
+		const avgRating = reviews.length
+			? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length
+			: 0;
+
+		return this.prisma.user.update({
+			where: { id: userId },
+			data: { rating: Number(avgRating.toFixed(2)) },
+			select: { id: true },
+		});
+	}
 }

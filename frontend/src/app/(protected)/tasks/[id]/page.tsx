@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
 import { Send, Star, RefreshCw } from 'lucide-react';
@@ -30,6 +31,8 @@ export default function TaskDetailsPage() {
 	const queryClient = useQueryClient();
 	const [response, setResponse] = useState('');
 	const [comment, setComment] = useState('');
+	const [reviewText, setReviewText] = useState('');
+	const [rating, setRating] = useState(0);
 	const [replyingTo, setReplyingTo] = useState<string | null>(null);
 	const task = useQuery({
 		queryKey: ['task', params.id],
@@ -62,7 +65,7 @@ export default function TaskDetailsPage() {
 	});
 	const createReview = useMutation({
 		mutationFn: () =>
-			reviewsApi.create(params.id, { rating: 5, text: 'Great work' }),
+			reviewsApi.create(params.id, { rating, text: reviewText }),
 		onSuccess: invalidate,
 	});
 	const resetExecutor = useMutation({
@@ -111,6 +114,17 @@ export default function TaskDetailsPage() {
 							))}
 						</div>
 						<div className='mt-5 flex flex-wrap gap-2'>
+							{current.executor && (
+								<div className='flex items-center gap-2'>
+									<span className='font-medium'>Исполнитель:</span>
+									<Link
+										href={`/users/${current.executor.id}`}
+										className='hover:underline'
+									>
+										{current.executor.firstName} {current.executor.lastName}
+									</Link>
+								</div>
+							)}
 							{current.status === 'draft' && (
 								<Button
 									onClick={() => tasksApi.publish(current.id).then(invalidate)}
@@ -157,12 +171,34 @@ export default function TaskDetailsPage() {
 								</>
 							)}
 							{current.status === 'completed' && isOwner && !current.review && (
-								<Button
-									onClick={() => createReview.mutate()}
-									disabled={createReview.isPending}
-								>
-									<Star className='h-4 w-4' /> Оставить отзыв
-								</Button>
+								<div className='w-full space-y-2 rounded-md border p-4'>
+									<h3 className='font-medium'>Оставить отзыв</h3>
+									<div className='flex items-center gap-1'>
+										{[1, 2, 3, 4, 5].map((star) => (
+											<Star
+												key={star}
+												className={`h-6 w-6 cursor-pointer ${
+													rating >= star
+														? 'fill-yellow-400 text-yellow-400'
+														: 'text-slate-300'
+												}`}
+												onClick={() => setRating(star)}
+											/>
+										))}
+									</div>
+									<Input
+										value={reviewText}
+										onChange={(e) => setReviewText(e.target.value)}
+										placeholder='Ваш отзыв'
+									/>
+									<Button
+										onClick={() => createReview.mutate()}
+										disabled={createReview.isPending || rating === 0}
+									>
+										<Star className='h-4 w-4 mr-2' />
+										Отправить отзыв
+									</Button>
+								</div>
 							)}
 						</div>
 					</Card>
@@ -175,10 +211,13 @@ export default function TaskDetailsPage() {
 									className='flex items-center justify-between rounded-md border p-3'
 								>
 									<div>
-										<p className='font-medium'>
+										<Link
+											href={`/users/${item.responder.id}`}
+											className='font-medium hover:underline'
+										>
 											{item.responder.firstName} {item.responder.lastName} ·{' '}
 											{item.responder.rating}
-										</p>
+										</Link>
 										<p className='text-sm text-slate-600 dark:text-slate-300'>
 											{item.message}
 										</p>
@@ -239,20 +278,31 @@ export default function TaskDetailsPage() {
 										body: string;
 										editedAt?: string;
 										deletedAt?: string;
-										author: { firstName: string; lastName: string };
+										author: {
+											id: string;
+											firstName: string;
+											lastName: string;
+										};
 										replies: {
 											id: string;
 											body: string;
 											editedAt?: string;
 											deletedAt?: string;
-											author: { firstName: string; lastName: string };
+											author: {
+												id: string;
+												firstName: string;
+												lastName: string;
+											};
 										}[];
 									}) => (
 										<div key={item.id} className='rounded-md border p-3'>
 											<div className='flex items-center gap-2'>
-												<p className='text-sm font-medium'>
+												<Link
+													href={`/users/${item.author.id}`}
+													className='text-sm font-medium hover:underline'
+												>
 													{item.author.firstName} {item.author.lastName}
-												</p>
+												</Link>
 												{item.editedAt && (
 													<span className='text-xs text-slate-500'>(ред.)</span>
 												)}
@@ -275,10 +325,13 @@ export default function TaskDetailsPage() {
 															className='ml-4 mt-2 border-l pl-3 text-sm'
 														>
 															<div className='flex items-center gap-2'>
-																<p className='text-sm font-medium'>
+																<Link
+																	href={`/users/${reply.author.id}`}
+																	className='text-sm font-medium hover:underline'
+																>
 																	{reply.author.firstName}{' '}
 																	{reply.author.lastName}
-																</p>
+																</Link>
 																{reply.editedAt && (
 																	<span className='text-xs text-slate-500'>
 																		(ред.)

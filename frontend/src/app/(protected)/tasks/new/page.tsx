@@ -13,6 +13,7 @@ import { directoriesApi, tasksApi } from '@/lib/api';
 const schema = z.object({
 	title: z.string().min(5),
 	description: z.string().min(20),
+	categoryId: z.string().min(1, 'Выберите категорию'),
 	skillIds: z.array(z.string()).default([]),
 	customSkill: z.string().optional(),
 	showCustomSkill: z.boolean().default(false),
@@ -27,11 +28,16 @@ export default function NewTaskPage() {
 		queryKey: ['skills'],
 		queryFn: () => directoriesApi.skills(),
 	});
+	const categories = useQuery({
+		queryKey: ['categories'],
+		queryFn: () => directoriesApi.categories(),
+	});
 	const form = useForm<FormValues>({
 		resolver: zodResolver(schema),
 		defaultValues: {
 			title: '',
 			description: '',
+			categoryId: '',
 			skillIds: [],
 			customSkill: '',
 			showCustomSkill: false,
@@ -47,7 +53,7 @@ export default function NewTaskPage() {
 	return (
 		<div className='space-y-6'>
 			<h1 className='text-3xl font-semibold'>Новая задача</h1>
-			<Card>
+			<Card className='p-6'>
 				<form
 					className='space-y-4'
 					onSubmit={form.handleSubmit((values) => mutation.mutate(values))}
@@ -58,6 +64,17 @@ export default function NewTaskPage() {
 						placeholder='Описание'
 						{...form.register('description')}
 					/>
+					<select
+						className='w-full rounded-md border bg-background p-3 text-sm'
+						{...form.register('categoryId')}
+					>
+						<option value=''>Выберите категорию</option>
+						{categories.data?.data.map((category) => (
+							<option key={category.id} value={category.id}>
+								{category.name}
+							</option>
+						))}
+					</select>
 					<div className='grid gap-2 md:grid-cols-3'>
 						{skills.data?.data.map((skill) => (
 							<label
